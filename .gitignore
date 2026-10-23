@@ -1,0 +1,19 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# node
+node_modules/
+.next/
+
+# local data and models
+.env
+data/
+mlruns/
+models/*.onnx
+*.mp4
+*.wav

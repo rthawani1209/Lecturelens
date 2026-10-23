@@ -37,3 +37,17 @@ def db(database_url):
     with psycopg.connect(database_url, autocommit=True) as conn:
         yield conn
         conn.execute("TRUNCATE users, groups, courses CASCADE")
+
+
+@pytest.fixture(scope="session")
+def lecture_fixture(tmp_path_factory):
+    """A ~28s synthetic lecture with known slides and narration (see fixtures/lecture.py)."""
+    import shutil
+
+    if not (shutil.which("ffmpeg") and shutil.which("espeak-ng")):
+        pytest.skip("needs ffmpeg and espeak-ng")
+    from tests.fixtures.lecture import build
+
+    out = tmp_path_factory.mktemp("lecture")
+    truth = build(out)
+    return out / "lecture.mp4", truth

@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
+      - run: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.8.0
       - run: pip install "transformers>=4.44,<5" huggingface_hub onnx onnxruntime numpy
       - run: python scripts/fetch_models.py --out models
       - name: Publish

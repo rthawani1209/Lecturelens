@@ -1,0 +1,53 @@
+# Local stack: everything LectureLens needs, no cloud accounts.
+#   docker compose up --build
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: lecturelens
+      POSTGRES_PASSWORD: lecturelens
+      POSTGRES_DB: lecturelens
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lecturelens"]
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  # stands in for Google Cloud Storage locally (same S3-style API)
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+
+  migrate:
+    build: ./backend
+    command: ["python", "-m", "lecturelens.db.migrate"]
+    environment: &backend-env
+      DATABASE_URL: postgresql://lecturelens:lecturelens@postgres:5432/lecturelens
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    build: ./backend
+    environment: *backend-env
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_started}
+      minio: {condition: service_started}
+
+volumes:
+  pgdata:
+  miniodata:

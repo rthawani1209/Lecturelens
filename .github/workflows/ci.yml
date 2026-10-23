@@ -9,6 +9,9 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Debian container: deb.debian.org is a CDN, and the runner's Azure Ubuntu
+    # mirror has been crawling at ~50 KB/s for ffmpeg's dependencies
+    container: python:3.12-bookworm
     defaults:
       run:
         working-directory: backend
@@ -19,28 +22,19 @@ jobs:
           POSTGRES_USER: lecturelens
           POSTGRES_PASSWORD: lecturelens
           POSTGRES_DB: lecturelens_test
-        ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U lecturelens"
+          --health-cmd "pg_isready -U lecturelens -d lecturelens_test"
           --health-interval 3s --health-retries 20
     env:
-      TEST_DATABASE_URL: postgresql://lecturelens:lecturelens@localhost:5432/lecturelens_test
+      TEST_DATABASE_URL: postgresql://lecturelens:lecturelens@postgres:5432/lecturelens_test
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
       - name: Install ffmpeg, espeak-ng, tesseract
         timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: |
-          # man-db rebuilds its cache on every install and can hang the job
-          echo "set man-db/auto-update false" | sudo debconf-communicate
-          sudo rm -f /var/lib/man-db/auto-update
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends ffmpeg espeak-ng tesseract-ocr tesseract-ocr-eng
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            ffmpeg espeak-ng tesseract-ocr tesseract-ocr-eng fonts-dejavu-core
       - uses: actions/cache@v4
         with:
           path: models

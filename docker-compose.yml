@@ -48,6 +48,18 @@ services:
       redis: {condition: service_started}
       minio: {condition: service_started}
 
+  worker:
+    build: ./backend
+    command: ["celery", "-A", "lecturelens.worker", "worker", "-l", "info", "--concurrency", "2"]
+    environment:
+      <<: *backend-env
+      MODELS_DIR: /models
+    volumes: ["./models:/models:ro"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_started}
+      minio: {condition: service_started}
+
 volumes:
   pgdata:
   miniodata:

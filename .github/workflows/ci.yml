@@ -30,6 +30,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng tesseract-ocr
+      - uses: actions/cache@v4
+        with:
+          path: models
+          key: models-v1
+      - run: ../scripts/get_models.sh
       - run: pip install -e '.[dev]'
       - run: ruff check . && ruff format --check .
       - run: pytest -q

@@ -11,12 +11,18 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://lecturelens:lecturelens@localhost:5432/lecturelens"
     redis_url: str = "redis://localhost:6379/0"
 
+    storage_backend: str = "s3"  # s3 | local
+    local_storage_dir: str = "data/storage"
     s3_endpoint: str = "http://localhost:9000"
     s3_bucket: str = "lectures"
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
 
     anthropic_api_key: str = ""
+
+    # pretrained models, unpacked from the models-v1 release (scripts/get_models.sh)
+    models_dir: str = "models"
+    max_upload_bytes: int = 4 * 1024**3
 
     # search
     text_dim: int = 384  # all-MiniLM-L6-v2

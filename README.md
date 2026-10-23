@@ -21,15 +21,18 @@ backend/            Python API (FastAPI) and pipeline workers
   lecturelens/
     api/            HTTP routes
     db/             connection pool + migration runner
+    pipeline/       processing stages: probe, audio, transcribe, keyframes, OCR
     search/         NumPy fusion (RRF), brute-force index, ranking metrics
+    worker.py       Celery worker that runs the pipeline
   migrations/       SQL schema, applied in order
-  tests/
+  tests/            unit + Postgres tests; fixtures/ builds a synthetic lecture
 ml/                 TensorFlow training for the frame tagger and re-ranker (coming)
 frontend/           Next.js web app (coming)
 infra/              Google Cloud deploy (coming)
-scripts/            fixture videos, demo data (coming)
+scripts/            model export, MIT OCW downloader, get_models.sh
 docs/               ARCHITECTURE, DECISIONS, INTERVIEW, EXERCISE (coming)
-docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, API
+models/             pretrained models (downloaded, not committed)
+docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, API, worker
 ```
 
 ## Run it locally
@@ -37,6 +40,7 @@ docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, API
 Needs Docker. No cloud accounts.
 
 ```bash
+./scripts/get_models.sh        # ~800 MB: whisper, MiniLM, CLIP (from this repo's releases)
 docker compose up --build
 curl localhost:8000/health
 ```

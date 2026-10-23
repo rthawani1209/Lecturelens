@@ -1,0 +1,53 @@
+# Builds the model + demo-course bundle and publishes it as GitHub release assets.
+# Run by hand from the Actions tab. Everything else (dev boxes, CI, Docker builds)
+# downloads from the release instead of hitting Hugging Face or OCW again.
+name: Data bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Only fetch the first N lectures (0 = all)"
+        default: "0"
+
+permissions:
+  contents: write
+
+jobs:
+  models:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
+      - run: pip install "transformers>=4.44,<5" huggingface_hub onnx onnxruntime numpy
+      - run: python scripts/fetch_models.py --out models
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -czf models.tar.gz models
+          gh release view models-v1 >/dev/null 2>&1 || \
+            gh release create models-v1 --title "Pretrained models v1" \
+              --notes "faster-whisper base.en, all-MiniLM-L6-v2 (ONNX), CLIP ViT-B/32 (ONNX). Built by the Data bundle workflow."
+          gh release upload models-v1 models.tar.gz --clobber
+
+  lectures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install yt-dlp
+      - run: python scripts/fetch_ocw.py --out data/ocw/6.006 --limit ${{ inputs.limit }}
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view ocw-6.006-s20 >/dev/null 2>&1 || \
+            gh release create ocw-6.006-s20 --title "Demo course: MIT 6.006 Spring 2020" \
+              --notes "Lecture videos and captions from MIT OpenCourseWare (https://ocw.mit.edu), licensed CC BY-NC-SA 4.0. Mirrored here so the demo can be rebuilt without scraping OCW."
+          gh release upload ocw-6.006-s20 data/ocw/6.006/* --clobber

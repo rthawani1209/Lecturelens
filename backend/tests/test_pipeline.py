@@ -1,61 +1,18 @@
 """End-to-end pipeline on the synthetic lecture, against a real Postgres."""
 
-from pathlib import Path
-
 import pytest
 
 from lecturelens.pipeline import stages
-from lecturelens.pipeline.chunk import Sentence
-from lecturelens.storage import LocalStorage, set_storage
+from tests.conftest import MODELS
 
 pytestmark = pytest.mark.db
-
-MODELS = Path(__file__).resolve().parents[2] / "models"
-
-
-@pytest.fixture
-def storage(tmp_path):
-    s = LocalStorage(tmp_path / "blobs")
-    set_storage(s)
-    yield s
-    set_storage(None)
-
-
-@pytest.fixture
-def lecture(db, storage, lecture_fixture):
-    video, truth = lecture_fixture
-    gid = db.execute("INSERT INTO groups (name) VALUES ('g') RETURNING id").fetchone()[0]
-    cid = db.execute(
-        "INSERT INTO courses (group_id, title) VALUES (%s, 'Algorithms') RETURNING id", (gid,)
-    ).fetchone()[0]
-    lid = db.execute(
-        "INSERT INTO lectures (course_id, title, storage_key, status)"
-        " VALUES (%s, 'Shortest paths', 'uploads/x.mp4', 'queued') RETURNING id",
-        (cid,),
-    ).fetchone()[0]
-    storage.put_file("uploads/x.mp4", video)
-    return lid, truth
-
-
-@pytest.fixture
-def fake_whisper(monkeypatch, lecture_fixture):
-    """Stand-in for whisper that 'hears' exactly what the fixture narrated."""
-    _, truth = lecture_fixture
-    calls = []
-
-    def fake(wav, model_dir, terms=None, on_progress=None):
-        calls.append(wav)
-        return [Sentence(s["start_s"], s["end_s"] - 1, s["spoken"]) for s in truth["slides"]]
-
-    monkeypatch.setattr(stages, "transcribe", fake)
-    return calls
 
 
 def _count(db, table, lid):
     return db.execute(f"SELECT count(*) FROM {table} WHERE lecture_id = %s", (lid,)).fetchone()[0]
 
 
-def test_full_pipeline(db, lecture, fake_whisper):
+def test_full_pipeline(db, lecture, fake_whisper, models_env):
     lid, truth = lecture
     stages.run_pipeline(lid)
 
@@ -79,9 +36,19 @@ def test_full_pipeline(db, lecture, fake_whisper):
         (lid,),
     ).fetchall()
     assert hits, "keyword search should find the Dijkstra sentence"
+    missing = db.execute(
+        "SELECT count(*) FROM segments WHERE lecture_id = %s AND text_emb IS NULL", (lid,)
+    ).fetchone()[0]
+    assert missing == 0
+    assert (
+        db.execute(
+            "SELECT count(*) FROM frames WHERE lecture_id = %s AND clip_emb IS NULL", (lid,)
+        ).fetchone()[0]
+        == 0
+    )
 
 
-def test_stages_are_idempotent(db, lecture, fake_whisper):
+def test_stages_are_idempotent(db, lecture, fake_whisper, models_env):
     lid, _ = lecture
     stages.run_pipeline(lid)
     before = {t: _count(db, t, lid) for t in ("frames", "segments", "transcript_lines")}
@@ -91,7 +58,9 @@ def test_stages_are_idempotent(db, lecture, fake_whisper):
     assert before == after
 
 
-def test_crash_mid_pipeline_resumes_without_redoing_work(db, lecture, fake_whisper, monkeypatch):
+def test_crash_mid_pipeline_resumes_without_redoing_work(
+    db, lecture, fake_whisper, models_env, monkeypatch
+):
     lid, _ = lecture
     real_ocr = stages.stage_ocr
 
@@ -116,7 +85,15 @@ def test_crash_mid_pipeline_resumes_without_redoing_work(db, lecture, fake_whisp
     attempts = dict(
         db.execute("SELECT stage, attempts FROM jobs WHERE lecture_id = %s", (lid,)).fetchall()
     )
-    assert attempts == {"probe": 1, "audio": 1, "transcribe": 1, "frames": 1, "ocr": 2}
+    assert attempts == {
+        "probe": 1,
+        "audio": 1,
+        "transcribe": 1,
+        "frames": 1,
+        "ocr": 2,
+        "embed_text": 1,
+        "embed_frames": 1,
+    }
     assert len(fake_whisper) == 1
     assert db.execute("SELECT status FROM lectures WHERE id = %s", (lid,)).fetchone()[0] == "ready"
 

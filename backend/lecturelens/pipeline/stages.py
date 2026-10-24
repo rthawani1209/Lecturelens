@@ -132,12 +132,60 @@ def stage_ocr(lecture_id: UUID, work: Path, report: Progress) -> None:
         cur.executemany("UPDATE frames SET ocr_text = %s WHERE id = %s", updates)
 
 
+def stage_embed_text(lecture_id: UUID, work: Path, report: Progress) -> None:
+    from ..embed import text_embedder
+
+    with connection() as conn:
+        segs = conn.execute(
+            "SELECT id, text FROM segments WHERE lecture_id = %s ORDER BY start_s", (lecture_id,)
+        ).fetchall()
+        lines = conn.execute(
+            "SELECT id, text FROM transcript_lines WHERE lecture_id = %s", (lecture_id,)
+        ).fetchall()
+    emb = text_embedder()
+    seg_vecs = emb.embed([s["text"] for s in segs])
+    report(0.5)
+    line_vecs = emb.embed([x["text"] for x in lines])
+    report(1.0)
+    with connection() as conn, conn.cursor() as cur:
+        cur.executemany(
+            "UPDATE segments SET text_emb = %s WHERE id = %s",
+            [(v, s["id"]) for v, s in zip(seg_vecs, segs, strict=True)],
+        )
+        cur.executemany(
+            "UPDATE transcript_lines SET text_emb = %s WHERE id = %s",
+            [(v, x["id"]) for v, x in zip(line_vecs, lines, strict=True)],
+        )
+
+
+def stage_embed_frames(lecture_id: UUID, work: Path, report: Progress) -> None:
+    from ..embed import clip_embedder
+
+    with connection() as conn:
+        frames = conn.execute(
+            "SELECT id, thumb_key FROM frames WHERE lecture_id = %s ORDER BY t_s", (lecture_id,)
+        ).fetchall()
+    if not frames:
+        return
+    storage = get_storage()
+    paths = [storage.get_file(f["thumb_key"], work / f"{f['id']}.jpg") for f in frames]
+    vecs = clip_embedder().embed_images(paths)
+    report(1.0)
+    with connection() as conn, conn.cursor() as cur:
+        cur.executemany(
+            "UPDATE frames SET clip_emb = %s WHERE id = %s",
+            [(v, f["id"]) for v, f in zip(vecs, frames, strict=True)],
+        )
+
+
 STAGES: list[tuple[str, Callable[[UUID, Path, Progress], None]]] = [
     ("probe", stage_probe),
     ("audio", stage_audio),
     ("transcribe", stage_transcribe),
     ("frames", stage_frames),
     ("ocr", stage_ocr),
+    ("embed_text", stage_embed_text),
+    ("embed_frames", stage_embed_frames),
 ]
 
 

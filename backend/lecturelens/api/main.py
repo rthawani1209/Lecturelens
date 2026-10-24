@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .. import __version__
 from ..config import get_settings
-from .routes import courses, health
+from .routes import courses, health, media, search
 
 
 def create_app() -> FastAPI:
@@ -18,6 +18,8 @@ def create_app() -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(courses.router)
+    app.include_router(search.router)
+    app.include_router(media.router)
     return app
 
 

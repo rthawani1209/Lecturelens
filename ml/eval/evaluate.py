@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+
 from lecturelens.db import connection
 from lecturelens.search.engine import collapse, fuse, hydrate, retrieve
 from lecturelens.search.metrics import evaluate

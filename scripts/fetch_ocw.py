@@ -84,7 +84,8 @@ def lecture_pages(course: str) -> list[tuple[str, str]]:
     for gallery in ("video_galleries/lecture-videos/", "pages/lecture-videos/"):
         try:
             found = [
-                (u, t) for u, t in links(root + gallery)
+                (u, t)
+                for u, t in links(root + gallery)
                 if f"/courses/{course}/resources/" in u and re.search(r"lecture-\d+", u)
             ]
         except Exception as e:  # noqa: BLE001
@@ -120,8 +121,14 @@ def main() -> None:
         mp4 = next((u for u, _ in found if u.endswith(".mp4") and "archive.org" in u), None)
         mp4 = mp4 or next((u for u, _ in found if u.endswith(".mp4")), None)
         caps = next((u for u, _ in found if u.endswith((".vtt", ".srt"))), None)
-        yt = next((m.group(1) for u, _ in found
-                   if (m := re.search(r"youtube\.com/(?:embed/|watch\?v=)([\w-]{11})", u))), None)
+        yt = next(
+            (
+                m.group(1)
+                for u, _ in found
+                if (m := re.search(r"youtube\.com/(?:embed/|watch\?v=)([\w-]{11})", u))
+            ),
+            None,
+        )
         stem = f"lec{num:02d}"
         print(f"{stem}: mp4={mp4} captions={caps} youtube={yt}")
 
@@ -129,8 +136,17 @@ def main() -> None:
         if mp4:
             download(mp4, video)
         elif yt:
-            subprocess.run(["yt-dlp", "-f", "18/best[height<=480]", "-o", str(video),
-                            f"https://www.youtube.com/watch?v={yt}"], check=True)
+            subprocess.run(
+                [
+                    "yt-dlp",
+                    "-f",
+                    "18/best[height<=480]",
+                    "-o",
+                    str(video),
+                    f"https://www.youtube.com/watch?v={yt}",
+                ],
+                check=True,
+            )
         else:
             print(f"  skipping {stem}: no video found", file=sys.stderr)
             continue
@@ -138,10 +154,17 @@ def main() -> None:
         if caps:
             cap_file = f"{stem}{Path(caps).suffix}"
             download(caps, args.out / cap_file)
-        lectures.append({
-            "number": num, "title": title or stem, "page": page, "video": video.name,
-            "captions": cap_file, "youtube_id": yt, "source_url": mp4,
-        })
+        lectures.append(
+            {
+                "number": num,
+                "title": title or stem,
+                "page": page,
+                "video": video.name,
+                "captions": cap_file,
+                "youtube_id": yt,
+                "source_url": mp4,
+            }
+        )
 
     lectures.sort(key=lambda x: x["number"])
     manifest = {

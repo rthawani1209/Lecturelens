@@ -200,6 +200,9 @@ def run_stage(lecture_id: UUID, name: str) -> None:
         jobs.fail(lecture_id, name, f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=3)}")
         raise
     jobs.finish(lecture_id, name)
+    if jobs.done_stages(lecture_id) >= {n for n, _ in STAGES}:
+        with connection() as conn:
+            conn.execute("UPDATE lectures SET status = 'ready' WHERE id = %s", (lecture_id,))
 
 
 def run_pipeline(lecture_id: UUID, only: list[str] | None = None) -> None:
@@ -210,6 +213,3 @@ def run_pipeline(lecture_id: UUID, only: list[str] | None = None) -> None:
             continue
         if name not in done:
             run_stage(lecture_id, name)
-    if not only:
-        with connection() as conn:
-            conn.execute("UPDATE lectures SET status = 'ready' WHERE id = %s", (lecture_id,))

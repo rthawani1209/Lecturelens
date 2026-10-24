@@ -70,15 +70,28 @@ def export_clip(out: Path) -> None:
     mask = torch.ones(2, 77, dtype=torch.long)
     with torch.no_grad():
         torch.onnx.export(
-            Image(model), (pixels,), dst / "image.onnx", dynamo=False, opset_version=17,
-            input_names=["pixel_values"], output_names=["embeds"],
+            Image(model),
+            (pixels,),
+            dst / "image.onnx",
+            dynamo=False,
+            opset_version=17,
+            input_names=["pixel_values"],
+            output_names=["embeds"],
             dynamic_axes={"pixel_values": {0: "batch"}, "embeds": {0: "batch"}},
         )
         torch.onnx.export(
-            Text(model), (ids, mask), dst / "text.onnx", dynamo=False, opset_version=17,
-            input_names=["input_ids", "attention_mask"], output_names=["embeds"],
-            dynamic_axes={"input_ids": {0: "batch"}, "attention_mask": {0: "batch"},
-                          "embeds": {0: "batch"}},
+            Text(model),
+            (ids, mask),
+            dst / "text.onnx",
+            dynamo=False,
+            opset_version=17,
+            input_names=["input_ids", "attention_mask"],
+            output_names=["embeds"],
+            dynamic_axes={
+                "input_ids": {0: "batch"},
+                "attention_mask": {0: "batch"},
+                "embeds": {0: "batch"},
+            },
         )
         ref_img = Image(model)(pixels).numpy()
         ref_txt = Text(model)(ids, mask).numpy()
@@ -87,7 +100,8 @@ def export_clip(out: Path) -> None:
     # make sure the exported graphs match torch before we ship them
     import onnxruntime as ort
 
-    img = ort.InferenceSession(str(dst / "image.onnx")).run(None, {"pixel_values": pixels.numpy()})[0]
+    img_sess = ort.InferenceSession(str(dst / "image.onnx"))
+    img = img_sess.run(None, {"pixel_values": pixels.numpy()})[0]
     txt = ort.InferenceSession(str(dst / "text.onnx")).run(
         None, {"input_ids": ids.numpy(), "attention_mask": mask.numpy()}
     )[0]

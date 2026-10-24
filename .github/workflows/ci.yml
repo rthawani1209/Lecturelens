@@ -42,6 +42,7 @@ jobs:
       - run: ../scripts/get_models.sh
       - run: pip install -e '.[dev]'
       - run: ruff check . && ruff format --check .
+      - run: ruff check --config pyproject.toml ../ml ../scripts && ruff format --config pyproject.toml --check ../ml ../scripts
       - run: pytest -q
 
   docker:

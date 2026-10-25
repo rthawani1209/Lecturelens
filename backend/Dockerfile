@@ -10,7 +10,7 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY lecturelens ./lecturelens
 COPY migrations ./migrations
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . && mkdir -p data/uploads && chown -R app data
 
 USER app
 EXPOSE 8000

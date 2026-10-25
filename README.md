@@ -19,10 +19,12 @@ Search your recorded lectures and jump to the exact second something was explain
 ```
 backend/            Python API (FastAPI) and pipeline workers
   lecturelens/
-    api/            HTTP routes
+    api/            HTTP routes: auth, courses, lectures + uploads, search, media
     db/             connection pool + migration runner
-    pipeline/       processing stages: probe, audio, transcribe, keyframes, OCR
-    search/         NumPy fusion (RRF), brute-force index, ranking metrics
+    pipeline/       processing stages: fetch, probe, audio, transcribe, keyframes, OCR, embed
+    search/         hybrid search engine, NumPy fusion (RRF), ranking metrics
+    access.py       who can read or change each course and lecture
+    auth.py         email-link and Google sign-in, sessions
     worker.py       Celery worker that runs the pipeline
   migrations/       SQL schema, applied in order
   tests/            unit + Postgres tests; fixtures/ builds a synthetic lecture

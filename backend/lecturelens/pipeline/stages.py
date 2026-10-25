@@ -18,6 +18,7 @@ from ..storage import get_storage
 from . import jobs
 from .chunk import Sentence, windows
 from .dedup import dedupe, dhash, signature, to_signed
+from .fetch import download_youtube
 from .media import MediaError, extract_audio, keyframes, probe
 from .ocr import ocr
 from .transcribe import transcribe
@@ -47,6 +48,24 @@ def _video(lecture: dict, work: Path) -> Path:
     if not lecture["storage_key"]:
         raise MediaError("lecture has no uploaded video")
     return get_storage().get_file(lecture["storage_key"], work / "video")
+
+
+def stage_fetch(lecture_id: UUID, work: Path, report: Progress) -> None:
+    """Imported lectures start as a URL; download it so the rest looks like an upload."""
+    lecture = _lecture(lecture_id)
+    if lecture["storage_key"]:
+        return
+    if not lecture["source_url"]:
+        raise MediaError("lecture has no uploaded video")
+    video, title = download_youtube(lecture["source_url"], work, get_settings().max_upload_bytes)
+    key = _key(lecture_id, f"source{video.suffix}")
+    get_storage().put_file(key, video)
+    with connection() as conn:
+        conn.execute(
+            "UPDATE lectures SET storage_key = %s,"
+            " title = CASE WHEN title = '' THEN %s ELSE title END WHERE id = %s",
+            (key, title[:200] or "Untitled lecture", lecture_id),
+        )
 
 
 def stage_probe(lecture_id: UUID, work: Path, report: Progress) -> None:
@@ -179,6 +198,7 @@ def stage_embed_frames(lecture_id: UUID, work: Path, report: Progress) -> None:
 
 
 STAGES: list[tuple[str, Callable[[UUID, Path, Progress], None]]] = [
+    ("fetch", stage_fetch),
     ("probe", stage_probe),
     ("audio", stage_audio),
     ("transcribe", stage_transcribe),

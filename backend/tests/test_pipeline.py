@@ -86,6 +86,7 @@ def test_crash_mid_pipeline_resumes_without_redoing_work(
         db.execute("SELECT stage, attempts FROM jobs WHERE lecture_id = %s", (lid,)).fetchall()
     )
     assert attempts == {
+        "fetch": 1,
         "probe": 1,
         "audio": 1,
         "transcribe": 1,

@@ -43,7 +43,7 @@ def database_url():
 def db(database_url):
     with psycopg.connect(database_url, autocommit=True) as conn:
         yield conn
-        conn.execute("TRUNCATE users, groups, courses CASCADE")
+        conn.execute("TRUNCATE users, groups, courses, login_tokens CASCADE")
 
 
 @pytest.fixture(scope="session")
@@ -108,3 +108,27 @@ def models_env(monkeypatch):
     get_settings.cache_clear()
     yield MODELS
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def client(database_url):
+    from fastapi.testclient import TestClient
+
+    from lecturelens.api.main import create_app
+
+    return TestClient(create_app())
+
+
+@pytest.fixture
+def sign_in(db):
+    """sign_in(client, email) logs the client in through the real email-link flow."""
+    from lecturelens import mail
+
+    def _sign_in(client, email: str) -> dict:
+        assert client.post("/auth/email", json={"email": email}).status_code == 204
+        token = mail.outbox[-1].get_content().split("token=")[1].split()[0]
+        r = client.post("/auth/email/verify", json={"token": token})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    return _sign_in

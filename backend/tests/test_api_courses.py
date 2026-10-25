@@ -1,16 +1,8 @@
 import uuid
 
 import pytest
-from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.db
-
-
-@pytest.fixture
-def client(database_url):
-    from lecturelens.api.main import create_app
-
-    return TestClient(create_app())
 
 
 def _course(db, *, public: bool) -> uuid.UUID:

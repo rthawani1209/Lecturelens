@@ -4,7 +4,6 @@ say exactly which moment each query should land on."""
 import uuid
 
 import pytest
-from fastapi.testclient import TestClient
 
 from lecturelens.pipeline import stages
 from lecturelens.search.engine import Candidate, collapse, fuse, search
@@ -52,10 +51,7 @@ def test_other_courses_are_not_searched(indexed):
 
 
 @pytest.mark.db
-def test_search_api(indexed, db):
-    from lecturelens.api.main import create_app
-
-    client = TestClient(create_app())
+def test_search_api(indexed, db, client, sign_in):
     body = client.get("/search", params={"q": "binary heap running time"}).json()
     assert body["hits"]
     top = body["hits"][0]
@@ -65,6 +61,17 @@ def test_search_api(indexed, db):
     db.execute("UPDATE courses SET public = false")
     assert client.get("/search", params={"q": "binary heap"}).json()["hits"] == []
     assert client.get(top["thumb_url"]).status_code == 404
+    # ...but members of the course's group still see it
+    me = sign_in(client, "member@example.com")
+    lid, cid, _ = indexed
+    db.execute(
+        "INSERT INTO group_members (group_id, user_id)"
+        " SELECT group_id, %s FROM courses WHERE id = %s",
+        (uuid.UUID(me["id"]), cid),
+    )
+    assert client.get("/search", params={"q": "binary heap"}).json()["hits"]
+    thumb = client.get(top["thumb_url"])
+    assert thumb.status_code == 200 and thumb.headers["cache-control"].startswith("private")
 
 
 def test_fuse_prefers_moments_found_by_several_retrievers():

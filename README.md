@@ -29,7 +29,7 @@ backend/            Python API (FastAPI) and pipeline workers
 ml/                 TensorFlow training for the frame tagger and re-ranker (coming)
 frontend/           Next.js web app (coming)
 infra/              Google Cloud deploy (coming)
-scripts/            model export, MIT OCW downloader, get_models.sh
+scripts/            model export, MIT OCW downloader, get_models.sh, check.sh (same lint + tests as CI)
 docs/               ARCHITECTURE, DECISIONS, INTERVIEW, EXERCISE (coming)
 models/             pretrained models (downloaded, not committed)
 docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, API, worker

@@ -12,6 +12,8 @@ from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID
 
+import numpy as np
+
 from ..config import get_settings
 from ..db import connection
 from ..storage import get_storage
@@ -197,6 +199,40 @@ def stage_embed_frames(lecture_id: UUID, work: Path, report: Progress) -> None:
         )
 
 
+def stage_tag(lecture_id: UUID, work: Path, report: Progress) -> None:
+    import json
+
+    from .. import tagger
+
+    with connection() as conn:
+        frames = conn.execute(
+            "SELECT id, thumb_key, clip_emb FROM frames WHERE lecture_id = %s ORDER BY t_s",
+            (lecture_id,),
+        ).fetchall()
+    if not frames:
+        return
+    if url := tagger.tagger_url():
+        storage = get_storage()
+        paths = [storage.get_file(f["thumb_key"], work / f"{f['id']}.jpg") for f in frames]
+        scores = tagger.serving_scores(paths, url)
+    else:
+        scores = tagger.probe_scores(np.stack([f["clip_emb"].to_numpy() for f in frames]))
+    report(1.0)
+    names = tagger.tags()
+    with connection() as conn, conn.cursor() as cur:
+        cur.executemany(
+            "UPDATE frames SET tag = %s, tag_scores = %s WHERE id = %s",
+            [
+                (
+                    names[int(s.argmax())],
+                    json.dumps({n: round(float(x), 4) for n, x in zip(names, s, strict=True)}),
+                    f["id"],
+                )
+                for s, f in zip(scores, frames, strict=True)
+            ],
+        )
+
+
 STAGES: list[tuple[str, Callable[[UUID, Path, Progress], None]]] = [
     ("fetch", stage_fetch),
     ("probe", stage_probe),
@@ -206,6 +242,7 @@ STAGES: list[tuple[str, Callable[[UUID, Path, Progress], None]]] = [
     ("ocr", stage_ocr),
     ("embed_text", stage_embed_text),
     ("embed_frames", stage_embed_frames),
+    ("tag", stage_tag),
 ]
 
 

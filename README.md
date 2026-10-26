@@ -24,17 +24,20 @@ backend/            Python API (FastAPI) and pipeline workers
     pipeline/       processing stages: fetch, probe, audio, transcribe, keyframes, OCR, embed
     search/         hybrid search engine, NumPy fusion (RRF), ranking metrics
     access.py       who can read or change each course and lecture
+    tagger.py       frame tags from TF Serving (or the CLIP probe fallback)
     auth.py         email-link and Google sign-in, sessions
     worker.py       Celery worker that runs the pipeline
   migrations/       SQL schema, applied in order
   tests/            unit + Postgres tests; fixtures/ builds a synthetic lecture
-ml/                 TensorFlow training for the frame tagger and re-ranker (coming)
+ml/                 training and evaluation (separate venv: ml/requirements.txt)
+  eval/             hand-labeled search queries and the search quality script
+  tagger/           CLIP-teacher labels + MobileNetV3 frame tagger in TensorFlow
 frontend/           Next.js web app (coming)
 infra/              Google Cloud deploy (coming)
 scripts/            model export, MIT OCW downloader, get_models.sh
 docs/               ARCHITECTURE, DECISIONS, INTERVIEW, EXERCISE (coming)
 models/             pretrained models (downloaded, not committed)
-docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, API, worker
+docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, TF Serving, API, worker
 ```
 
 ## Run it locally

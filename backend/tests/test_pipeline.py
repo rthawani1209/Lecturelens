@@ -46,6 +46,11 @@ def test_full_pipeline(db, lecture, fake_whisper, models_env):
         ).fetchone()[0]
         == 0
     )
+    # without TF Serving the CLIP probe tags frames; every frame gets a tag and scores
+    tagged = db.execute(
+        "SELECT tag, tag_scores FROM frames WHERE lecture_id = %s ORDER BY t_s", (lid,)
+    ).fetchall()
+    assert all(tag and abs(sum(scores.values()) - 1) < 1e-3 for tag, scores in tagged)
 
 
 def test_stages_are_idempotent(db, lecture, fake_whisper, models_env):
@@ -94,6 +99,7 @@ def test_crash_mid_pipeline_resumes_without_redoing_work(
         "ocr": 2,
         "embed_text": 1,
         "embed_frames": 1,
+        "tag": 1,
     }
     assert len(fake_whisper) == 1
     assert db.execute("SELECT status FROM lectures WHERE id = %s", (lid,)).fetchone()[0] == "ready"

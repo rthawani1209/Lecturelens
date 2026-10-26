@@ -37,6 +37,8 @@ class Settings(BaseSettings):
 
     # pretrained models, unpacked from the models-v1 release (scripts/get_models.sh)
     models_dir: str = "models"
+    # TF Serving for the frame tagger; empty uses the CLIP probe fallback
+    tagger_url: str = ""
     max_upload_bytes: int = 4 * 1024**3
 
     # search

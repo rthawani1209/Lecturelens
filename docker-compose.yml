@@ -48,17 +48,27 @@ services:
       redis: {condition: service_started}
       minio: {condition: service_started}
 
+  # the frame tagger trained in ml/tagger (export lands in models/tagger/<version>)
+  tagger:
+    image: tensorflow/serving:2.21.0
+    environment:
+      MODEL_NAME: tagger
+    volumes: ["./models/tagger:/models/tagger:ro"]
+    ports: ["8501:8501"]
+
   worker:
     build: ./backend
     command: ["celery", "-A", "lecturelens.worker", "worker", "-l", "info", "--concurrency", "2"]
     environment:
       <<: *backend-env
       MODELS_DIR: /models
+      TAGGER_URL: http://tagger:8501
     volumes: ["./models:/models:ro"]
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_started}
       minio: {condition: service_started}
+      tagger: {condition: service_started}
 
 volumes:
   pgdata:

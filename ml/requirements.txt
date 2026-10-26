@@ -1,0 +1,5 @@
+# Training env for ml/ (separate from the backend, which never imports TensorFlow)
+tensorflow-cpu==2.20.0
+mlflow-skinny==3.1.1
+numpy
+pillow

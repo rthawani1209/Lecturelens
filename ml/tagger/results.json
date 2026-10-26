@@ -1,0 +1,21 @@
+{
+  "test_hand_accuracy": 0.8352941176470589,
+  "test_hand_macro_f1": 0.6820778405524169,
+  "teacher_hand_accuracy": 0.8352941176470589,
+  "teacher_hand_macro_f1": 0.6578063411389469,
+  "test_teacher_agreement": 0.823721436343852,
+  "ms_per_frame_single": 18.949071740000818,
+  "ms_per_frame_batch32": 3.7743802625001877,
+  "params": 942582,
+  "saved_model_mb": 9.0,
+  "version": 1793044136,
+  "mlflow_run_id": "7c86d599d0d540af92141fd3ee9f009c",
+  "tags": [
+    "slide",
+    "code",
+    "whiteboard",
+    "diagram",
+    "professor",
+    "other"
+  ]
+}

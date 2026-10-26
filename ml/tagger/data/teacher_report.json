@@ -1,0 +1,10 @@
+{
+  "hand_labeled": {
+    "train": 215,
+    "test": 85
+  },
+  "test_accuracy": {
+    "clip_zero_shot": 0.6705882352941176,
+    "clip_linear_probe": 0.8352941176470589
+  }
+}

@@ -12,7 +12,9 @@ node_modules/
 
 # local data and models
 .env
-data/
+/data/
+backend/data/
+ml/tagger/data/sheets/
 mlruns/
 models/
 *.mp4

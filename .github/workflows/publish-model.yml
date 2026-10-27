@@ -1,0 +1,36 @@
+# Publishes a model trained locally (e.g. the frame tagger) as a GitHub release asset.
+# Push the tarball to a throwaway branch, run this with that branch, then delete it,
+# so the binary never lands on main.
+name: Publish model
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch: {description: "branch holding the tarball", required: true}
+      file: {description: "tarball path on that branch", required: true}
+      tag: {description: "release tag, e.g. tagger-v1", required: true}
+      title: {description: "release title", required: true}
+      notes: {description: "release notes", required: true}
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          FILE: ${{ inputs.file }}
+          TITLE: ${{ inputs.title }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --target main --title "$TITLE" --notes "$NOTES"
+          gh release upload "$TAG" "$FILE" --clobber

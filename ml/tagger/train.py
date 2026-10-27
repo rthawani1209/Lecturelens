@@ -1,7 +1,8 @@
 """Train the frame tagger: MobileNetV3-Small, fine-tuned in Keras on the CLIP
 teacher's soft labels (knowledge distillation).
 
-    ml/.venv/bin/python ml/tagger/train.py --storage data/storage --export models/tagger
+    ml/.venv/bin/python ml/tagger/train.py --storage data/storage
+    ml/.venv/bin/python ml/tagger/export.py models/tagger_build/<version>
 
 Only frames from training lectures are used. The held-out lectures are scored
 against the hand-checked labels at the end. Runs are logged to MLflow (./mlruns).
@@ -72,7 +73,7 @@ def main() -> None:
     ap.add_argument("--labels", type=Path, default=Path("ml/tagger/data/pseudo_labels.csv"))
     ap.add_argument("--hand", type=Path, default=Path("ml/tagger/data/hand_labels.csv"))
     ap.add_argument("--storage", type=Path, default=Path("data/storage"))
-    ap.add_argument("--export", type=Path, default=Path("models/tagger"))
+    ap.add_argument("--export", type=Path, default=Path("models/tagger_build"))
     ap.add_argument("--head-epochs", type=int, default=6)
     ap.add_argument("--tune-epochs", type=int, default=8)
     ap.add_argument("--unfreeze", type=int, default=40, help="layers of the base to fine-tune")
@@ -181,8 +182,8 @@ def main() -> None:
         mlflow.log_metrics(metrics)
         print(json.dumps(metrics, indent=2))
 
-        # TF Serving layout: <name>/<version>/saved_model.pb. Augmentation layers are
-        # no-ops at inference, so the served graph is just resize-free MobileNet + head.
+        # plain uint8-pixels SavedModel; export.py wraps it for TF Serving. Augmentation
+        # layers are no-ops at inference, so this is just MobileNet + the new head.
         version = int(time.time())
         export_dir = args.export / str(version)
         export = keras.export.ExportArchive()

@@ -53,6 +53,27 @@ def test_full_pipeline(db, lecture, fake_whisper, models_env):
     assert all(tag and abs(sum(scores.values()) - 1) < 1e-3 for tag, scores in tagged)
 
 
+def test_tagging_survives_tf_serving_being_down(db, lecture, fake_whisper, models_env, monkeypatch):
+    lid, _ = lecture
+    stages.run_pipeline(lid)
+    db.execute("UPDATE frames SET tag = NULL, tag_scores = NULL")
+    monkeypatch.setenv("TAGGER_URL", "http://127.0.0.1:9")  # nothing listens here
+    from lecturelens.config import get_settings
+
+    get_settings.cache_clear()
+    stages.run_stage(lid, "tag")
+    get_settings.cache_clear()
+    assert _count(db, "frames", lid) > 0
+    untagged = db.execute(
+        "SELECT count(*) FROM frames WHERE lecture_id = %s AND tag IS NULL", (lid,)
+    ).fetchone()[0]
+    assert untagged == 0
+    status = db.execute(
+        "SELECT status FROM jobs WHERE lecture_id = %s AND stage = 'tag'", (lid,)
+    ).fetchone()[0]
+    assert status == "done"
+
+
 def test_stages_are_idempotent(db, lecture, fake_whisper, models_env):
     lid, _ = lecture
     stages.run_pipeline(lid)

@@ -19,3 +19,4 @@ mlruns/
 models/
 *.mp4
 *.wav
+ml/rerank/data/

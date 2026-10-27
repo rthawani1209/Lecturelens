@@ -1,0 +1,41 @@
+{
+  "window_ndcg10": {
+    "val": {
+      "rrf": 0.47338609855509206,
+      "logistic_regression": 0.5189396103462998,
+      "reranker": 0.5775481224100099
+    },
+    "test": {
+      "rrf": 0.47203685332509665,
+      "logistic_regression": 0.5080744898701424,
+      "reranker": 0.5013703557464534
+    }
+  },
+  "best_epoch": 10,
+  "params": 1292,
+  "version": 1793130912,
+  "mlflow_run_id": "840a0215cfbf4c178da3dc1760de21d1",
+  "features": [
+    "keyword_score",
+    "keyword_rrf",
+    "meaning_rrf",
+    "ocr_rrf",
+    "visual_rrf",
+    "fused_score",
+    "meaning_sim",
+    "best_line_sim",
+    "visual_sim",
+    "term_overlap",
+    "ocr_overlap",
+    "tag_match",
+    "tag_slide",
+    "tag_code",
+    "tag_whiteboard",
+    "tag_diagram",
+    "tag_professor",
+    "tag_other",
+    "position",
+    "first_two_minutes",
+    "n_retrievers"
+  ]
+}

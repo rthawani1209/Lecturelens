@@ -210,13 +210,36 @@ def collapse(ranked: list[tuple[Candidate, float]], limit: int) -> list[tuple[Ca
     return [ranked[g[0]] for g in group_by_time(hits)[:limit]]
 
 
+def rerank(q: str, ranked: list[tuple[Candidate, float]], model: str = "mlp"):
+    """Re-score the top candidates with the trained model; the rest keep their order."""
+    from ..embed import clip_embedder, text_embedder
+    from . import features
+    from . import rerank as rr
+
+    top_n = get_settings().rerank_top
+    head, tail = ranked[:top_n], ranked[top_n:]
+    if not head or not rr.available():
+        return ranked
+    x = features.build(q, head, text_embedder().embed([q])[0], clip_embedder().embed_texts([q])[0])
+    s = rr.scores(x, model)
+    order = np.argsort(-s, kind="stable")
+    return [(head[i][0], float(s[i])) for i in order] + tail
+
+
 def search(
-    q: str, courses: Sequence[UUID], mode: str = "hybrid", limit: int = 10, tag: str | None = None
+    q: str,
+    courses: Sequence[UUID],
+    mode: str = "hybrid",
+    limit: int = 10,
+    tag: str | None = None,
+    use_reranker: bool = True,
 ) -> list[Hit]:
     q = q.strip()
     if not q or not courses:
         return []
     ranked = fuse(retrieve(q, courses, mode))
+    if mode == "hybrid" and use_reranker:
+        ranked = rerank(q, ranked)
     if tag:
         ranked = _with_tag(ranked, tag)
     return hydrate(q, collapse(ranked, limit))

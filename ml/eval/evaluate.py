@@ -10,6 +10,8 @@ segment ids, so the labels survive re-chunking or re-transcribing.
 
 import argparse
 import json
+import os
+import platform
 import sys
 import time
 from pathlib import Path
@@ -17,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from lecturelens.db import connection
-from lecturelens.search.engine import collapse, fuse, hydrate, retrieve
+from lecturelens.search.engine import collapse, fuse, hydrate, rerank, retrieve
 from lecturelens.search.metrics import evaluate
 
 HERE = Path(__file__).parent
@@ -58,6 +60,10 @@ def judge(query: dict, hits: list, positions: dict) -> tuple[list[str], dict[str
     return ranked, rel
 
 
+# reranked methods: (retrievers to fuse, model that re-scores the top 50)
+RERANKED = {"hybrid+lr": ("hybrid", "lr"), "hybrid+reranker": ("hybrid", "mlp")}
+
+
 def run(methods: list[str], queries: list[dict], limit: int = 10) -> dict:
     course, positions = course_and_lectures()
     results = {}
@@ -65,7 +71,10 @@ def run(methods: list[str], queries: list[dict], limit: int = 10) -> dict:
         runs, qrels, latencies = {}, {}, []
         for q in queries:
             t0 = time.perf_counter()
-            ranked = fuse(retrieve(q["query"], [course], method))
+            mode, model = RERANKED.get(method, (method, None))
+            ranked = fuse(retrieve(q["query"], [course], mode))
+            if model:
+                ranked = rerank(q["query"], ranked, model)
             hits = hydrate(q["query"], collapse(ranked, limit))
             latencies.append(time.perf_counter() - t0)
             runs[q["id"]], qrels[q["id"]] = judge(q, hits, positions)
@@ -88,7 +97,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--split", default="test", choices=["test", "val", "all"])
     ap.add_argument(
-        "--methods", nargs="+", default=["keyword", "meaning", "visual", "text", "hybrid"]
+        "--methods",
+        nargs="+",
+        default=["keyword", "meaning", "visual", "text", "hybrid", "hybrid+lr", "hybrid+reranker"],
     )
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
@@ -97,8 +108,16 @@ def main() -> None:
     print(f"{len(queries)} queries ({args.split})\n")
     print(table(results))
     if args.out:
+        meta = {
+            "date": time.strftime("%Y-%m-%d"),
+            "machine": f"{platform.machine()}, {os.cpu_count()} CPUs, {platform.system()}",
+            "command": "python " + " ".join(sys.argv),
+        }
         args.out.write_text(
-            json.dumps({"split": args.split, "n": len(queries), "results": results}, indent=2)
+            json.dumps(
+                {"split": args.split, "n": len(queries), **meta, "results": results}, indent=2
+            )
+            + "\n"
         )
 
 

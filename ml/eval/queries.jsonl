@@ -87,3 +87,14 @@
 {"id": "h087", "query": "NP-complete hardest problems in NP and reductions", "split": "test", "labels": [{"lecture": 19, "start": 2582, "end": 2779, "rel": 3}]}
 {"id": "h088", "query": "what is on the final exam", "split": "val", "labels": [{"lecture": 20, "start": 21, "end": 396, "rel": 3}]}
 {"id": "h089", "query": "origami folding algorithms", "split": "val", "labels": [{"lecture": 21, "start": 65, "end": 740, "rel": 3}]}
+{"id": "h090", "query": "how to prove a problem is hard using a reduction", "split": "val", "labels": [{"lecture": 20, "start": 679, "end": 800, "rel": 3}]}
+{"id": "h091", "query": "review of data structures for sets and sequences", "split": "val", "labels": [{"lecture": 20, "start": 834, "end": 1241, "rel": 3}]}
+{"id": "h092", "query": "fold a piece of paper and make one straight cut to get any shape", "split": "val", "labels": [{"lecture": 21, "start": 770, "end": 870, "rel": 3}]}
+{"id": "h093", "query": "self assembling DNA tiles that compute", "split": "val", "labels": [{"lecture": 21, "start": 870, "end": 1080, "rel": 3}]}
+{"id": "h094", "query": "beating log n for an ordered set using the word size", "split": "val", "labels": [{"lecture": 21, "start": 1139, "end": 1380, "rel": 3}]}
+{"id": "h095", "query": "approximation scheme for planar graphs by deleting layers", "split": "val", "labels": [{"lecture": 21, "start": 1440, "end": 1730, "rel": 3}]}
+{"id": "h096", "query": "picture hanging puzzle where removing any nail makes it fall", "split": "val", "labels": [{"lecture": 21, "start": 1824, "end": 1960, "rel": 3}]}
+{"id": "h097", "query": "reduce 3-partition to solving jigsaw puzzles", "split": "test", "labels": [{"lecture": 19, "start": 3040, "end": 3320, "rel": 3}]}
+{"id": "h098", "query": "are video games like Zelda or Pokemon NP-hard", "split": "test", "labels": [{"lecture": 19, "start": 3480, "end": 3560, "rel": 3}]}
+{"id": "h099", "query": "Dijkstra pseudocode relax outgoing edges and decrease key", "split": "test", "labels": [{"lecture": 13, "start": 1738, "end": 2078, "rel": 3}]}
+{"id": "h100", "query": "detect a cycle in a directed graph with DFS", "split": "test", "labels": [{"lecture": 10, "start": 2696, "end": 3150, "rel": 3}]}

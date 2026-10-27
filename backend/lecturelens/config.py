@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     models_dir: str = "models"
     # TF Serving for the frame tagger; empty uses the CLIP probe fallback
     tagger_url: str = ""
+    # TF Serving for the re-ranker; empty runs the same weights in NumPy
+    reranker_url: str = ""
+    rerank_top: int = 50
     max_upload_bytes: int = 4 * 1024**3
 
     # search

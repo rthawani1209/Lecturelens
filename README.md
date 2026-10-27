@@ -45,7 +45,7 @@ docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, TF Serving, 
 Needs Docker. No cloud accounts.
 
 ```bash
-./scripts/get_models.sh        # ~800 MB: whisper, MiniLM, CLIP (from this repo's releases)
+./scripts/get_models.sh        # ~800 MB: whisper, MiniLM, CLIP + the frame tagger (from this repo's releases)
 docker compose up --build
 curl localhost:8000/health
 ```

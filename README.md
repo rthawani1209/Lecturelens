@@ -34,7 +34,7 @@ ml/                 training and evaluation (separate venv: ml/requirements.txt)
   tagger/           CLIP-teacher labels + MobileNetV3 frame tagger in TensorFlow
 frontend/           Next.js web app (coming)
 infra/              Google Cloud deploy (coming)
-scripts/            model export, MIT OCW downloader, get_models.sh
+scripts/            model export, MIT OCW downloader, get_models.sh, check.sh (same lint + tests as CI)
 docs/               ARCHITECTURE, DECISIONS, INTERVIEW, EXERCISE (coming)
 models/             pretrained models (downloaded, not committed)
 docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, TF Serving, API, worker

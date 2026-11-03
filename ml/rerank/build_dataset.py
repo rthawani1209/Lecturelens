@@ -32,6 +32,15 @@ from lecturelens.search.engine import fuse, retrieve  # noqa: E402
 
 TEST_LECTURES = {1, 4, 7, 10, 13, 16, 19}
 TOP_N = 50
+TEMPLATES = [
+    "how does {} work",
+    "what is {}",
+    "why {}",
+    "explain {}",
+    "how do you {}",
+    "when do we use {}",
+    "example of {}",
+]
 
 
 def idf_table(texts: list[str]) -> dict[str, float]:
@@ -50,8 +59,12 @@ def make_query(rng: random.Random, text: str, idf: dict[str, float]) -> str | No
     k = rng.randint(3, min(6, len(toks)))
     keep = set(sorted(toks, key=lambda w: -idf.get(w, 0))[:k])
     q = [w for w in toks if w in keep]
-    if len(q) > 3 and rng.random() < 0.3:
-        q.pop(rng.randrange(len(q)))
+    # half the time drop the rarest word: people rarely know the exact term they're
+    # looking for, and a query made of the window's own words is too easy for keyword search
+    if len(q) > 3 and rng.random() < 0.5:
+        q.remove(max(q, key=lambda w: idf.get(w, 0)))
+    if rng.random() < 0.4:
+        return rng.choice(TEMPLATES).format(" ".join(q))
     return " ".join(q)
 
 
@@ -124,7 +137,9 @@ def main() -> None:
     X, y, qid, meta = [], [], [], []
     skipped = 0
     for n, q in enumerate(queries):
-        ranked = fuse(retrieve(q["query"], [course], "hybrid"))[:TOP_N]
+        fused = fuse(retrieve(q["query"], [course], "hybrid"))
+        # same pool the engine re-ranks: fused top 50 plus all meaning hits
+        ranked = [r for i, r in enumerate(fused) if i < TOP_N or "meaning" in r[0].ranks]
         if not ranked:
             skipped += 1
             continue

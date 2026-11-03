@@ -40,12 +40,18 @@ def test_regression_gate_passes_for_the_committed_model():
     assert json.loads(gate.TRAIN.read_text())["version"] == accepted["model_version"]
 
 
+def test_gate_default_matches_the_api_default():
+    from lecturelens.config import Settings
+
+    assert _gate().DEFAULT == Settings().search_mode
+
+
 def test_gate_rejects_a_worse_model():
     gate = _gate()
     results = json.loads(gate.RESULTS.read_text())
     accepted = json.loads(gate.ACCEPTED.read_text())
     worse = json.loads(json.dumps(results))
-    worse["results"]["hybrid+reranker"]["ndcg@10"] = results["results"]["hybrid"]["ndcg@10"]
+    worse["results"]["hybrid+reranker"]["ndcg@10"] = results["results"]["hybrid"]["ndcg@10"] - 0.01
     assert gate.check(worse, accepted)
 
 

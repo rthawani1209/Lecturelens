@@ -1,20 +1,20 @@
 {
   "window_ndcg10": {
     "val": {
-      "rrf": 0.47338609855509206,
-      "logistic_regression": 0.5189396103462998,
-      "reranker": 0.5775481224100099
+      "rrf": 0.5547816364351776,
+      "logistic_regression": 0.5261022603314138,
+      "reranker": 0.5682092900423447
     },
     "test": {
-      "rrf": 0.47203685332509665,
-      "logistic_regression": 0.5080744898701424,
-      "reranker": 0.5013703557464534
+      "rrf": 0.527415987339725,
+      "logistic_regression": 0.5271597948755483,
+      "reranker": 0.5314737915740516
     }
   },
-  "best_epoch": 10,
-  "params": 1292,
-  "version": 1793130912,
-  "mlflow_run_id": "840a0215cfbf4c178da3dc1760de21d1",
+  "best_epoch": 1,
+  "params": 1428,
+  "version": 1793132397,
+  "mlflow_run_id": "8634363e04e648128a4c0c6d765faa47",
   "features": [
     "keyword_score",
     "keyword_rrf",
@@ -36,6 +36,10 @@
     "tag_other",
     "position",
     "first_two_minutes",
-    "n_retrievers"
+    "n_retrievers",
+    "meaning_gap",
+    "best_line_gap",
+    "keyword_share",
+    "meaning_pct"
   ]
 }

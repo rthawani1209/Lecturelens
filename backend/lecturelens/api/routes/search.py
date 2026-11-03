@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ... import access
+from ...config import get_settings
 from ...db import connection
 from ...search.engine import search
 from ..deps import current_user
@@ -39,7 +40,7 @@ class SearchOut(BaseModel):
 def search_lectures(
     q: str = Query(..., min_length=1, max_length=300),
     course: UUID | None = None,
-    mode: Literal["hybrid", "text", "visual", "keyword", "meaning"] = "hybrid",
+    mode: Literal["hybrid", "text", "visual", "keyword", "meaning"] | None = None,
     tag: Literal["slide", "code", "whiteboard", "diagram", "professor"] | None = None,
     limit: int = Query(10, ge=1, le=50),
     user: dict | None = Depends(current_user),
@@ -49,6 +50,7 @@ def search_lectures(
         courses = access.readable_courses(conn, user["id"] if user else None, course)
     if course and not courses:
         raise HTTPException(404, "course not found")
+    mode = mode or get_settings().search_mode
     hits = search(q, courses, mode=mode, limit=limit, tag=tag)
     return {
         "query": q,

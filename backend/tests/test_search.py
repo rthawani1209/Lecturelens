@@ -78,7 +78,8 @@ def test_fuse_prefers_moments_found_by_several_retrievers():
     a = Candidate(1, "L", 0, 30, ranks={"keyword": 1})
     b = Candidate(2, "L", 300, 330, ranks={"keyword": 2, "meaning": 1})
     c = Candidate(3, "L", 600, 630, ranks={"meaning": 2})
-    assert [x.segment_id for x, _ in fuse({1: a, 2: b, 3: c}, k=60)] == [2, 1, 3]
+    # b is the only one two retrievers agree on, whatever the weights
+    assert fuse({1: a, 2: b, 3: c}, k=60)[0][0].segment_id == 2
 
 
 def test_collapse_merges_overlapping_windows():

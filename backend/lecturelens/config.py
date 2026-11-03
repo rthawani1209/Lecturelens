@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # TF Serving for the re-ranker; empty runs the same weights in NumPy
     reranker_url: str = ""
     rerank_top: int = 50
+    # picked on the val questions: meaning-only tied hybrid + re-ranker there
+    # (0.756 vs 0.759 NDCG@10) at 1/20 of the latency, see ml/rerank/README.md
+    search_mode: str = "meaning"
     max_upload_bytes: int = 4 * 1024**3
 
     # search

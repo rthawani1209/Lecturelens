@@ -41,6 +41,12 @@ FEATURES = [
     "position",  # start time / lecture length
     "first_two_minutes",  # intros mention everything and explain nothing
     "n_retrievers",  # how many lists found it
+    # relative to the other candidates for the same query: raw similarities drift a lot
+    # between queries, "best of this bunch" doesn't
+    "meaning_gap",  # meaning_sim minus the best meaning_sim among the candidates
+    "best_line_gap",
+    "keyword_share",  # keyword_score / best keyword_score
+    "meaning_pct",  # where meaning_sim ranks among the candidates, 1 = top
 ]
 
 _WORD = re.compile(r"[a-z0-9]+")
@@ -151,6 +157,20 @@ def build(
             c.start_s / dur[c.lecture_id],
             float(c.start_s < 120),
             len(c.ranks),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
         ]
         out[i] = row
+    col = {name: i for i, name in enumerate(FEATURES)}
+    ms, bl, kw = (
+        out[:, col["meaning_sim"]],
+        out[:, col["best_line_sim"]],
+        out[:, col["keyword_score"]],
+    )
+    out[:, col["meaning_gap"]] = ms - ms.max()
+    out[:, col["best_line_gap"]] = bl - bl.max()
+    out[:, col["keyword_share"]] = kw / kw.max() if kw.max() > 0 else 0.0
+    out[:, col["meaning_pct"]] = 1.0 - np.argsort(np.argsort(-ms)) / max(len(ms) - 1, 1)
     return out

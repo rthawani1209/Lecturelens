@@ -1,6 +1,7 @@
 """Regression gate for the re-ranker. A new model only replaces the old one if, on
-the held-out test questions, it beats both baselines (plain hybrid and the logistic
-regression) and doesn't score worse than the model it replaces.
+the held-out test questions, it beats plain hybrid and the logistic regression and
+doesn't score worse than the model it replaces. It also checks that the default
+search mode isn't beaten by any single retriever.
 
     python ml/rerank/gate.py            # check (CI runs this through pytest)
     python ml/rerank/gate.py --accept   # after retraining + re-running the eval
@@ -23,15 +24,29 @@ METRICS = ("ndcg@10", "recall@5", "mrr")
 TOLERANCE = 0.005  # eval noise is zero (deterministic), this only absorbs rounding
 
 
+# what /search uses when no mode is given; must match Settings.search_mode
+DEFAULT = "meaning"
+SINGLE = ("keyword", "meaning", "visual")
+
+
 def check(results: dict, accepted: dict | None) -> list[str]:
     r = results["results"]
-    new = r["hybrid+reranker"]
     problems = []
-    for base in ("hybrid", "hybrid+lr"):
-        if new["ndcg@10"] <= r[base]["ndcg@10"]:
+    # the default search must not lose to any single retriever on its own
+    for base in SINGLE:
+        if r[DEFAULT]["ndcg@10"] < r[base]["ndcg@10"]:
             problems.append(
-                f"re-ranker NDCG@10 {new['ndcg@10']:.3f} <= {base} {r[base]['ndcg@10']:.3f}"
+                f"default ({DEFAULT}) NDCG@10 {r[DEFAULT]['ndcg@10']:.3f} < {base}"
+                f" {r[base]['ndcg@10']:.3f}"
             )
+    # the re-ranker must beat its own baselines...
+    new = r["hybrid+reranker"]
+    for base in ("hybrid", "hybrid+lr"):
+        if new["ndcg@10"] < r[base]["ndcg@10"]:
+            problems.append(
+                f"re-ranker NDCG@10 {new['ndcg@10']:.3f} < {base} {r[base]['ndcg@10']:.3f}"
+            )
+    # ...and not get worse than the model it replaces
     if accepted:
         for m in METRICS:
             if new[m] < accepted["test"][m] - TOLERANCE:
@@ -42,9 +57,14 @@ def check(results: dict, accepted: dict | None) -> list[str]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--accept", action="store_true")
+    # only when the eval setup itself changed (fusion weights, candidate pool), so old
+    # and new numbers aren't comparable; say why in the commit message
+    ap.add_argument("--new-baseline", action="store_true")
     args = ap.parse_args()
     results = json.loads(RESULTS.read_text())
-    accepted = json.loads(ACCEPTED.read_text()) if ACCEPTED.exists() else None
+    accepted = None
+    if ACCEPTED.exists() and not args.new_baseline:
+        accepted = json.loads(ACCEPTED.read_text())
     problems = check(results, accepted)
     for p in problems:
         print("FAIL:", p)

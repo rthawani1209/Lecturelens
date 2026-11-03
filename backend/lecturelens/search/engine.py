@@ -30,8 +30,10 @@ MODES = {
     "keyword": ("keyword",),
     "meaning": ("meaning",),
 }
-# visual matches are noisier (CLIP on 360p lecture video), so they count a bit less
-WEIGHTS = {"keyword": 1.0, "meaning": 1.0, "ocr": 0.8, "visual": 0.6}
+# tuned on the val questions (ml/eval/rrf_tuning_val.json). On 6.006, spoken
+# meaning carries most of the signal; keyword and visual lists add noise at full weight.
+# OCR got 0 there because chalkboard video gives almost no readable slide text.
+WEIGHTS = {"keyword": 0.25, "meaning": 1.0, "ocr": 0.0, "visual": 0.3}
 
 
 @dataclass
@@ -217,7 +219,11 @@ def rerank(q: str, ranked: list[tuple[Candidate, float]], model: str = "mlp"):
     from . import rerank as rr
 
     top_n = get_settings().rerank_top
-    head, tail = ranked[:top_n], ranked[top_n:]
+    # the fused top N plus everything meaning search found, so a good semantic match
+    # that fusion pushed down still gets a second look
+    pick = [i < top_n or "meaning" in c.ranks for i, (c, _) in enumerate(ranked)]
+    head = [r for r, keep in zip(ranked, pick, strict=True) if keep]
+    tail = [r for r, keep in zip(ranked, pick, strict=True) if not keep]
     if not head or not rr.available():
         return ranked
     x = features.build(q, head, text_embedder().embed([q])[0], clip_embedder().embed_texts([q])[0])

@@ -9,3 +9,11 @@ ruff check . && ruff format --check .
 ruff check --config pyproject.toml ../ml ../scripts
 ruff format --config pyproject.toml --check ../ml ../scripts
 python -m pytest -q
+
+# SavedModel tests need TensorFlow, which lives in the ml env (ml/requirements.txt)
+ml_python="${ML_PYTHON:-../ml/.venv/bin/python}"
+if [ ! -x "$ml_python" ]; then
+  echo "no ml env at $ml_python; create it with ml/requirements.txt or set ML_PYTHON" >&2
+  exit 1
+fi
+"$ml_python" -m pytest -q ../ml/tests

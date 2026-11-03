@@ -32,7 +32,10 @@ loss: for a right and a wrong candidate of the same query, it learns to score th
 right one higher. It re-scores the fused top 50 plus everything meaning search found.
 The baseline is a scikit-learn logistic regression on the same features. Both log to
 MLflow. The backend runs the same weights in NumPy, and a test checks they give the
-same scores as Keras on fixed inputs. The SavedModel goes to TF Serving.
+same scores as Keras on fixed inputs. `export.py` rebuilds the SavedModel from
+those committed weights into `models/reranker/1`, and docker-compose serves it next to
+the tagger from one TF Serving (`ml/serving/models.config`). `ml/tests` checks the
+served scores match within 1e-4.
 
 ## What was tried, chosen on val
 
@@ -101,6 +104,7 @@ used once, on 2026-10-27, when the fusion weights and candidate pool changed.
 python ml/eval/tune_rrf.py                      # backend venv, val only
 python ml/rerank/build_dataset.py              # needs the processed demo course
 ml/.venv/bin/python ml/rerank/train.py
+ml/.venv/bin/python ml/rerank/export.py          # SavedModel for TF Serving
 python ml/eval/evaluate.py --split test --out ml/eval/results_test.json
 python ml/rerank/gate.py --accept
 ```

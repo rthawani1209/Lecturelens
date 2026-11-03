@@ -74,6 +74,26 @@ def test_search_api(indexed, db, client, sign_in):
     assert thumb.status_code == 200 and thumb.headers["cache-control"].startswith("private")
 
 
+@pytest.mark.db
+def test_tag_filter_keeps_only_moments_with_that_kind_of_frame(indexed, db, client):
+    lid, cid, truth = indexed
+    relax = truth["slides"][SLIDE["relax"]]
+    # pin the tags so the test doesn't depend on the tagger
+    db.execute("UPDATE frames SET tag = 'slide' WHERE lecture_id = %s", (lid,))
+    db.execute(
+        "UPDATE frames SET tag = 'code' WHERE lecture_id = %s AND t_s >= %s AND t_s < %s",
+        (lid, relax["start_s"], relax["end_s"]),
+    )
+    hits = search("shortest path distance", [cid], mode="hybrid", limit=10, tag="code")
+    assert hits
+    assert {_slide_at(truth, h.jump_s) for h in hits} == {SLIDE["relax"]}
+    assert search("shortest path distance", [cid], tag="whiteboard") == []
+
+    body = client.get("/search", params={"q": "relax", "tag": "code"}).json()
+    assert body["hits"] and all(h["tag"] == "code" for h in body["hits"])
+    assert client.get("/search", params={"q": "relax", "tag": "cat"}).status_code == 422
+
+
 def test_fuse_prefers_moments_found_by_several_retrievers():
     a = Candidate(1, "L", 0, 30, ranks={"keyword": 1})
     b = Candidate(2, "L", 300, 330, ranks={"keyword": 2, "meaning": 1})

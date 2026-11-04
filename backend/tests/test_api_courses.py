@@ -34,3 +34,21 @@ def test_private_course_looks_missing(client, db):
     private = _course(db, public=False)
     assert client.get(f"/courses/{private}/lectures").status_code == 404
     assert client.get(f"/courses/{uuid.uuid4()}/lectures").status_code == 404
+
+
+def test_lectures_grouped_by_week(client, db):
+    cid = _course(db, public=True)  # "Lecture 1" has no week yet
+    db.execute(
+        "INSERT INTO lectures (course_id, title, week, position) VALUES"
+        " (%(c)s, 'Hashing', 2, 4), (%(c)s, 'Sorting', 2, 3), (%(c)s, 'Arrays', 1, 2)",
+        {"c": cid},
+    )
+    body = client.get(f"/courses/{cid}/weeks").json()
+    assert [w["week"] for w in body] == [1, 2, None]
+    assert [lec["title"] for lec in body[1]["lectures"]] == ["Sorting", "Hashing"]
+    assert body[2]["lectures"][0]["title"] == "Lecture 1"
+
+
+def test_weeks_of_a_private_course_look_missing(client, db):
+    private = _course(db, public=False)
+    assert client.get(f"/courses/{private}/weeks").status_code == 404

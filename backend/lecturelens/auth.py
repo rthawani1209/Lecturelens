@@ -17,6 +17,8 @@ from .db import connection
 from .mail import send
 
 LOGIN_LINK_TTL = timedelta(minutes=15)
+# unused links per address; stops anyone using the form to flood an inbox
+MAX_LIVE_LINKS = 5
 
 
 def new_token() -> str:
@@ -31,15 +33,24 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-def start_email_login(email: str) -> None:
+def start_email_login(email: str) -> bool:
+    """Email a sign-in link. False if this address already has too many live links."""
     email = normalize_email(email)
     token = new_token()
     with connection() as conn:
+        live = conn.execute(
+            "SELECT count(*) AS n FROM login_tokens"
+            " WHERE email = %s AND used_at IS NULL AND expires_at > now()",
+            (email,),
+        ).fetchone()["n"]
+        if live >= MAX_LIVE_LINKS:
+            return False
         conn.execute(
             "INSERT INTO login_tokens (token_hash, email, expires_at) VALUES (%s, %s, now() + %s)",
             (token_hash(token), email, LOGIN_LINK_TTL),
         )
-    link = f"{get_settings().api_url}/auth/email/verify?token={token}"
+    # opens the web app, which POSTs the token (see routes/auth.py)
+    link = f"{get_settings().app_url}/signin/verify?token={token}"
     send(
         email,
         "Your LectureLens sign-in link",
@@ -47,6 +58,7 @@ def start_email_login(email: str) -> None:
         "The link works once and expires in 15 minutes. "
         "If you didn't ask for it, you can ignore this email.",
     )
+    return True
 
 
 def finish_email_login(token: str) -> UUID | None:

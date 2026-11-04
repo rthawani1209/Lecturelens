@@ -18,12 +18,18 @@ class Settings(BaseSettings):
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
 
+    # Claude for Ask and flashcards. Without a key both fall back to extractive versions.
     anthropic_api_key: str = ""
+    ai_model: str = "claude-opus-5-5"
+    ai_per_minute: int = 6  # calls per user
+    ai_daily_tokens: int = 200_000  # per user
+    ai_monthly_tokens: int = 20_000_000  # whole site; a hard stop on spend
 
     # auth. secret_key signs upload URLs; set a long random value in production.
     secret_key: str = "dev-only-not-secret"
     app_url: str = "http://localhost:3000"  # the web app, where sign-in lands
-    api_url: str = "http://localhost:8000"
+    # the API as the browser sees it: behind the web app's /api proxy, so cookies stay first-party
+    api_url: str = "http://localhost:3000/api"
     session_days: int = 30
     cookie_secure: bool = False  # true behind https
     google_client_id: str = ""

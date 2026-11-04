@@ -28,24 +28,24 @@ class LocalStorage:
     def __init__(self, root: Path):
         self.root = Path(root)
 
-    def _path(self, key: str) -> Path:
+    def path(self, key: str) -> Path:
         return self.root / _safe_key(key)
 
     def put_file(self, key: str, src: Path) -> None:
-        dst = self._path(key)
+        dst = self.path(key)
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, dst)
 
     def get_file(self, key: str, dst: Path) -> Path:
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(self._path(key), dst)
+        shutil.copyfile(self.path(key), dst)
         return dst
 
     def exists(self, key: str) -> bool:
-        return self._path(key).exists()
+        return self.path(key).exists()
 
     def delete_prefix(self, prefix: str) -> None:
-        p = self._path(prefix)
+        p = self.path(prefix)
         if p.is_dir():
             shutil.rmtree(p)
         elif p.exists():

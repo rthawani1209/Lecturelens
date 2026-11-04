@@ -14,6 +14,8 @@ def test_email_link_signs_in_once(client, db):
     assert client.get("/auth/me").status_code == 401
     assert client.post("/auth/email", json={"email": " Ada@Example.com "}).status_code == 204
     assert mail.outbox[-1]["To"] == "ada@example.com"
+    # the link opens the web app's verify page, never a GET on the API
+    assert "http://localhost:3000/signin/verify?token=" in mail.outbox[-1].get_content()
     token = _link_token()
 
     r = client.post("/auth/email/verify", json={"token": token})
@@ -42,6 +44,18 @@ def test_expired_link_is_refused(client, db):
     client.post("/auth/email", json={"email": "a@example.com"})
     db.execute("UPDATE login_tokens SET expires_at = now() - interval '1 second'")
     assert client.post("/auth/email/verify", json={"token": _link_token()}).status_code == 400
+
+
+def test_too_many_links_for_one_address(client, db):
+    for _ in range(5):
+        assert client.post("/auth/email", json={"email": "b@example.com"}).status_code == 204
+    r = client.post("/auth/email", json={"email": "B@example.com"})
+    assert r.status_code == 429
+    assert "15 minutes" in r.json()["detail"]
+    # other addresses aren't affected, and expired links stop counting
+    assert client.post("/auth/email", json={"email": "c@example.com"}).status_code == 204
+    db.execute("UPDATE login_tokens SET expires_at = now() - interval '1 second'")
+    assert client.post("/auth/email", json={"email": "b@example.com"}).status_code == 204
 
 
 def test_logout_kills_the_session(client, sign_in):
@@ -107,3 +121,14 @@ def test_google_rejects_wrong_state_and_unverified_email(client, google):
 
 def test_google_off_without_client_id(client):
     assert client.get("/auth/google/start", follow_redirects=False).status_code == 404
+
+
+def test_providers_only_offer_google_when_configured(client):
+    assert client.get("/auth/providers").json() == {"email": True, "google": False}
+    assert client.get("/auth/google/start", follow_redirects=False).status_code == 404
+
+
+def test_session_answers_200_signed_in_or_not(client, sign_in):
+    assert client.get("/auth/session").json() == {"user": None}
+    sign_in(client, "ada@example.com")
+    assert client.get("/auth/session").json()["user"]["email"] == "ada@example.com"

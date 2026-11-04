@@ -5,6 +5,7 @@ from uuid import UUID
 from celery import Celery
 
 from .config import get_settings
+from .pipeline.media import MediaError
 from .pipeline.stages import run_pipeline
 
 settings = get_settings()
@@ -26,10 +27,17 @@ def process_lecture(self, lecture_id: str) -> None:
     lid = UUID(lecture_id)
     try:
         run_pipeline(lid)
+    except MediaError:
+        # a broken or non-video file won't fix itself: fail now instead of retrying
+        _mark_failed(lid)
     except Exception:
         if self.request.retries >= self.max_retries:
-            from .db import connection
-
-            with connection() as conn:
-                conn.execute("UPDATE lectures SET status = 'failed' WHERE id = %s", (lid,))
+            _mark_failed(lid)
         raise
+
+
+def _mark_failed(lid: UUID) -> None:
+    from .db import connection
+
+    with connection() as conn:
+        conn.execute("UPDATE lectures SET status = 'failed' WHERE id = %s", (lid,))

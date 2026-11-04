@@ -16,7 +16,7 @@ from ...auth import (
 )
 from ...config import get_settings
 from ...db import connection
-from ..deps import SESSION_COOKIE, require_user
+from ..deps import SESSION_COOKIE, current_user, require_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -55,7 +55,10 @@ def _set_session(response: Response, token: str) -> None:
 @router.post("/email", status_code=204)
 def email_link(body: EmailIn) -> None:
     # same answer whether or not the address has an account
-    start_email_login(body.email)
+    if not start_email_login(body.email):
+        raise HTTPException(
+            429, "Too many sign-in links for this address. Try again in 15 minutes."
+        )
 
 
 # The emailed link opens the web app, which POSTs the token here. A plain GET
@@ -67,6 +70,18 @@ def email_verify(body: TokenIn, response: Response) -> dict:
         raise HTTPException(400, "this sign-in link is invalid or has expired")
     _set_session(response, create_session(uid))
     return _me(uid)
+
+
+@router.get("/session")
+def session(user: dict | None = Depends(current_user)) -> dict:
+    """Who's signed in, as a 200 either way (the web app asks on every page)."""
+    return {"user": _me(user["id"]) if user else None}
+
+
+@router.get("/providers")
+def providers() -> dict:
+    """Which sign-in buttons the web app should show."""
+    return {"email": True, "google": bool(get_settings().google_client_id)}
 
 
 @router.get("/google/start")

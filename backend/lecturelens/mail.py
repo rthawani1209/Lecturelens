@@ -24,7 +24,10 @@ def send(to: str, subject: str, body: str) -> None:
     outbox.append(msg)
     del outbox[:-50]
     if not s.smtp_url:
-        log.info("email to %s: %s\n%s", to, subject, body)
+        # print, not log: uvicorn doesn't show app loggers, and in local dev this is
+        # the only way to get a sign-in link
+        print(f"--- email to {to}: {subject}\n{body}\n---", flush=True)
+        log.info("email to %s: %s", to, subject)
         return
     url = urlparse(s.smtp_url)
     with smtplib.SMTP(url.hostname, url.port or 587, timeout=10) as smtp:

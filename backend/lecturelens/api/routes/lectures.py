@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from pathlib import PurePosixPath
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ from ...config import get_settings
 from ...db import connection
 from ...pipeline.fetch import canonical_url, youtube_id
 from ...pipeline.stages import STAGES
+from ...storage import get_storage
 from ..deps import current_user, require_user
 
 router = APIRouter(tags=["lectures"])
@@ -64,6 +65,10 @@ def upload_url(upload_id: UUID) -> str:
     return f"/uploads/{upload_id}?exp={exp}&sig={sig}"
 
 
+def _size(n: int) -> str:
+    return f"{n / 1024**3:g} GB" if n >= 1024**3 else f"{n / 1024**2:g} MB"
+
+
 def _next_position(conn, course_id: UUID) -> int:
     return conn.execute(
         "SELECT coalesce(max(position), 0) + 1 AS p FROM lectures WHERE course_id = %s",
@@ -77,9 +82,10 @@ def start_upload(course_id: UUID, body: UploadIn, user: dict = Depends(require_u
     s = get_settings()
     ext = PurePosixPath(body.filename).suffix.lower()
     if ext not in VIDEO_TYPES:
-        raise HTTPException(415, f"upload a video file ({', '.join(sorted(VIDEO_TYPES))})")
+        kinds = ", ".join(t.lstrip(".") for t in sorted(VIDEO_TYPES))
+        raise HTTPException(415, f"That isn't a video file. Upload one of: {kinds}.")
     if body.size > s.max_upload_bytes:
-        raise HTTPException(413, "file is too large")
+        raise HTTPException(413, f"This file is too big. The limit is {_size(s.max_upload_bytes)}.")
     with connection() as conn, conn.transaction():
         if access.course(conn, user["id"], course_id, write=True) is None:
             raise HTTPException(404, "course not found")
@@ -143,12 +149,20 @@ def _detail(lecture_id: UUID) -> dict:
                 "stage": name,
                 "status": r["status"] if r else "pending",
                 "progress": r["progress"] if r else 0.0,
-                # first line only; tracebacks stay in the logs
-                "error": r["error"].splitlines()[0] if r and r["error"] else None,
+                # plain words for people; the full error stays in jobs.error and the logs
+                "error": friendly_error(name, r["error"]) if r and r["error"] else None,
             }
         )
     progress = 1.0 if lec["status"] == "ready" else sum(s["progress"] for s in stages) / len(STAGES)
     return {**lec, "stages": stages, "progress": round(progress, 3)}
+
+
+def friendly_error(stage: str, error: str) -> str:
+    if error.startswith("MediaError"):
+        if stage == "fetch":
+            return "Couldn't download this video. Check the link and that it's public."
+        return "This file isn't a playable video."
+    return f"Something went wrong while processing ({stage}). Try again."
 
 
 def _readable(lecture_id: UUID, user: dict | None) -> None:
@@ -172,7 +186,9 @@ def lecture_events(
     return StreamingResponse(
         progress_events(lecture_id),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        # no-transform: proxies (including the web app's /api rewrite) must not gzip
+        # and buffer the stream, or progress only shows up when it ends
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
 
 
@@ -192,3 +208,41 @@ def progress_events(
         if detail["status"] in ("ready", "failed"):
             return
         time.sleep(poll_s)
+
+
+def _writable(lecture_id: UUID, user: dict) -> dict:
+    with connection() as conn:
+        lec = access.lecture(conn, user["id"], lecture_id, write=True)
+    if lec is None:
+        raise HTTPException(404, "lecture not found")
+    return lec
+
+
+@router.post("/lectures/{lecture_id}/retry", response_model=LectureDetail)
+def retry_lecture(lecture_id: UUID, user: dict = Depends(require_user)) -> dict:
+    """Run a failed lecture again. Stages that finished are skipped."""
+    lec = _writable(lecture_id, user)
+    if lec["status"] != "failed":
+        raise HTTPException(409, "only failed lectures can be retried")
+    with connection() as conn:
+        conn.execute(
+            "UPDATE jobs SET status = 'pending', error = NULL, progress = 0"
+            " WHERE lecture_id = %s AND status = 'failed'",
+            (lecture_id,),
+        )
+        conn.execute("UPDATE lectures SET status = 'queued' WHERE id = %s", (lecture_id,))
+    queue.enqueue(lecture_id)
+    return _detail(lecture_id)
+
+
+@router.delete("/lectures/{lecture_id}", status_code=204)
+def delete_lecture(lecture_id: UUID, user: dict = Depends(require_user)) -> Response:
+    lec = _writable(lecture_id, user)
+    storage = get_storage()
+    storage.delete_prefix(f"lectures/{lecture_id}")
+    # uploaded sources live under lectures/<id>/ too; demo sources are shared, keep them
+    if lec["storage_key"] and lec["storage_key"].startswith(f"lectures/{lecture_id}/"):
+        storage.delete_prefix(lec["storage_key"])
+    with connection() as conn:
+        conn.execute("DELETE FROM lectures WHERE id = %s", (lecture_id,))
+    return Response(status_code=204)

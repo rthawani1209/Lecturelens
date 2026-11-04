@@ -53,6 +53,8 @@ class Hit:
     lecture_title: str
     course_id: UUID
     week: int | None
+    lecture_position: int
+    lecture_duration_s: float | None
     start_s: float
     end_s: float
     jump_s: float
@@ -281,7 +283,7 @@ def hydrate(q: str, ranked: list[tuple[Candidate, float]]) -> list[Hit]:
             r["id"]: r
             for r in conn.execute(
                 """
-                SELECT s.id, s.text, l.title, l.course_id, l.week
+                SELECT s.id, s.text, l.title, l.course_id, l.week, l.position, l.duration_s
                   FROM segments s JOIN lectures l ON l.id = s.lecture_id WHERE s.id = ANY(%s)
                 """,
                 (ids,),
@@ -321,6 +323,8 @@ def hydrate(q: str, ranked: list[tuple[Candidate, float]]) -> list[Hit]:
                     lecture_title=seg["title"],
                     course_id=seg["course_id"],
                     week=seg["week"],
+                    lecture_position=seg["position"],
+                    lecture_duration_s=seg["duration_s"],
                     start_s=c.start_s,
                     end_s=c.end_s,
                     jump_s=line["start_s"] if line else c.start_s,

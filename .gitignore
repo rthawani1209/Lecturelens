@@ -20,3 +20,6 @@ models/
 *.mp4
 *.wav
 ml/rerank/data/
+
+# redis snapshots from local runs
+dump.rdb

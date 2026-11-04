@@ -1,33 +1,61 @@
+"""Videos and thumbnails, served only through short-lived signed links.
+
+The API checks who can see a lecture when it hands out a link (search, watch).
+The link itself carries an HMAC and an expiry, so the media route needs no session
+and works for <video> range requests and <img> tags alike.
+"""
+
+import mimetypes
 import tempfile
 from pathlib import Path
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from ... import access
-from ...db import connection
-from ...storage import get_storage
-from ..deps import current_user
+from ... import signing
+from ...storage import LocalStorage, get_storage
 
 router = APIRouter(tags=["media"])
 
+MEDIA_TTL_S = 15 * 60
+TYPES = {
+    ".jpg": "image/jpeg",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+}
 
-@router.get("/media/lectures/{lecture_id}/frames/{name}")
-def frame_image(
-    lecture_id: UUID, name: str, user: dict | None = Depends(current_user)
-) -> FileResponse:
-    if not name.endswith(".jpg") or "/" in name or name.startswith("."):
+
+def media_url(key: str | None, ttl_s: int = MEDIA_TTL_S) -> str | None:
+    if not key:
+        return None
+    exp, sig = signing.sign(f"media:{key}", ttl_s)
+    return f"/media/{key}?exp={exp}&sig={sig}"
+
+
+@router.get("/media/{key:path}")
+def media(key: str, exp: int = Query(...), sig: str = Query(...)) -> FileResponse:
+    if not signing.verify(f"media:{key}", exp, sig):
+        raise HTTPException(403, "link expired or invalid")
+    ext = Path(key).suffix.lower()
+    if ext not in TYPES:
         raise HTTPException(404)
-    with connection() as conn:
-        lec = access.lecture(conn, user["id"] if user else None, lecture_id)
-    key = f"lectures/{lecture_id}/frames/{name}"
     storage = get_storage()
-    if lec is None or not storage.exists(key):
+    try:
+        if isinstance(storage, LocalStorage):
+            path = storage.path(key)
+        else:
+            # S3/GCS: keep a local copy so range requests are cheap after the first
+            path = Path(tempfile.gettempdir()) / "ll-media" / key
+            if not path.exists():
+                storage.get_file(key, path)
+    except ValueError:
+        raise HTTPException(404) from None
+    if not path.is_file():
         raise HTTPException(404)
-    dst = Path(tempfile.gettempdir()) / "ll-media" / str(lecture_id) / name
-    if not dst.exists():
-        storage.get_file(key, dst)
-    # private thumbnails must not sit in shared caches
-    cache = "public, max-age=86400" if lec["public"] else "private, max-age=3600"
-    return FileResponse(dst, media_type="image/jpeg", headers={"Cache-Control": cache})
+    return FileResponse(
+        path,
+        media_type=TYPES.get(ext) or mimetypes.guess_type(key)[0],
+        # the link is a bearer token: keep it out of shared caches
+        headers={"Cache-Control": f"private, max-age={MEDIA_TTL_S}"},
+    )

@@ -29,6 +29,9 @@ def setup(client, sign_in, storage, queued, tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+MP4_HEAD = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2"
+
+
 def _start(client, course, data: bytes, name="lecture.mp4"):
     r = client.post(
         f"/courses/{course}/lectures",
@@ -48,7 +51,7 @@ def _put(client, url, data, first, last, total):
 
 def test_chunked_upload_resumes_and_queues(setup, db, storage, queued):
     client, course = setup
-    data = bytes(range(256)) * 400  # 100 KB
+    data = MP4_HEAD + bytes(range(256)) * 400  # ~100 KB
     up = _start(client, course, data)
     url, n = up["upload_url"], len(data)
 
@@ -68,6 +71,33 @@ def test_chunked_upload_resumes_and_queues(setup, db, storage, queued):
     # finishing twice is harmless
     assert _put(client, url, data, 40_000, n - 1, n).status_code == 200
     assert len(queued) == 1
+
+
+def test_same_video_twice_points_at_the_first_lecture(setup, db, queued):
+    client, course = setup
+    data = MP4_HEAD + b"same lecture" * 1000
+    first = _start(client, course, data)
+    r = _put(client, first["upload_url"], data, 0, len(data) - 1, len(data))
+    assert r.status_code == 201 and r.json() == {
+        "lecture_id": first["lecture_id"],
+        "duplicate": False,
+    }
+
+    second = _start(client, course, data)
+    r = _put(client, second["upload_url"], data, 0, len(data) - 1, len(data))
+    assert r.status_code == 200
+    assert r.json() == {"lecture_id": first["lecture_id"], "duplicate": True}
+    assert db.execute("SELECT count(*) FROM lectures").fetchone()[0] == 1
+    assert len(queued) == 1
+    # a retried last chunk (reply lost) still gets the right answer
+    r = _put(client, second["upload_url"], data, 0, len(data) - 1, len(data))
+    assert r.json()["lecture_id"] == first["lecture_id"]
+
+    # another course is a different place: it gets its own lecture
+    other = client.post("/courses", json={"title": "Other"}).json()["id"]
+    third = _start(client, other, data)
+    r = _put(client, third["upload_url"], data, 0, len(data) - 1, len(data))
+    assert r.status_code == 201 and r.json()["duplicate"] is False
 
 
 def test_upload_link_must_be_signed_and_fresh(setup):
@@ -90,6 +120,38 @@ def test_upload_link_must_be_signed_and_fresh(setup):
     )
     # body longer than the range it claims
     assert client.put(up["upload_url"], content=b"x" * 11, headers=headers).status_code == 400
+    # a range that runs past the declared size
+    long = {"Content-Range": "bytes 0-19/10"}
+    assert client.put(up["upload_url"], content=b"x" * 20, headers=long).status_code == 400
+
+
+@pytest.mark.parametrize(
+    "head, ok",
+    [
+        (MP4_HEAD, True),
+        (b"\x00\x00\x00\x08wide\x00\x00\x00\x00mdat", True),  # old QuickTime
+        (b"\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01", True),  # mkv / webm
+        (b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n", False),
+        (b"PK\x03\x04\x14\x00\x06\x00", False),  # zip, docx
+        (b"not a video at all", False),
+        (b"", False),
+    ],
+)
+def test_looks_like_video(head, ok):
+    from lecturelens.pipeline.media import looks_like_video
+
+    assert looks_like_video(head) is ok
+
+
+def test_non_video_is_refused_on_the_first_chunk(setup, db, queued):
+    client, course = setup
+    data = b"%PDF-1.7\n" + b"x" * 5000
+    up = _start(client, course, data, name="notes.mp4")  # the name lies; the bytes don't
+    r = _put(client, up["upload_url"], data, 0, 999, len(data))
+    assert r.status_code == 415
+    assert "isn't a video" in r.json()["detail"]
+    assert db.execute("SELECT count(*) FROM lectures").fetchone()[0] == 0
+    assert queued == []
 
 
 def test_upload_rules(setup, sign_in):
@@ -101,7 +163,8 @@ def test_upload_rules(setup, sign_in):
     body = {"title": "t", "filename": "notes.pdf", "size": 10}
     assert client.post(f"/courses/{course}/lectures", json=body).status_code == 415
     body = {"title": "t", "filename": "big.mp4", "size": 10 * 1024**4}
-    assert client.post(f"/courses/{course}/lectures", json=body).status_code == 413
+    r = client.post(f"/courses/{course}/lectures", json=body)
+    assert r.status_code == 413 and r.json()["detail"].endswith("The limit is 4 GB.")
     body = {"title": "t", "filename": "a.mp4", "size": 10}
     assert (
         TestClient(create_app()).post(f"/courses/{course}/lectures", json=body).status_code == 401
@@ -176,6 +239,8 @@ def test_progress_stream(setup, db):
     # over HTTP it's an event stream, and other people can't open it
     r = client.get(f"/lectures/{lid}/events")
     assert r.headers["content-type"].startswith("text/event-stream")
+    # without no-transform, the web app's proxy gzips the stream and holds it to the end
+    assert "no-transform" in r.headers["cache-control"]
     assert "event: progress" in r.text
     detail = client.get(f"/lectures/{lid}").json()
     assert [s["stage"] for s in detail["stages"]][:2] == ["fetch", "probe"]

@@ -55,12 +55,14 @@ def test_search_api(indexed, db, client, sign_in):
     body = client.get("/search", params={"q": "binary heap running time"}).json()
     assert body["hits"]
     top = body["hits"][0]
-    assert top["thumb_url"].startswith("/media/lectures/")
-    assert client.get(top["thumb_url"]).headers["content-type"] == "image/jpeg"
-    # a private course is invisible to anonymous search and its media 404s
+    assert top["thumb_url"].startswith("/media/lectures/") and "sig=" in top["thumb_url"]
+    assert top["lecture_duration_s"] > 0 and top["lecture_position"] == 0
+    thumb = client.get(top["thumb_url"])
+    assert thumb.headers["content-type"] == "image/jpeg"
+    assert thumb.headers["cache-control"].startswith("private")
+    # a private course is invisible to anonymous search, so no links are handed out
     db.execute("UPDATE courses SET public = false")
     assert client.get("/search", params={"q": "binary heap"}).json()["hits"] == []
-    assert client.get(top["thumb_url"]).status_code == 404
     # ...but members of the course's group still see it
     me = sign_in(client, "member@example.com")
     lid, cid, _ = indexed
@@ -70,8 +72,6 @@ def test_search_api(indexed, db, client, sign_in):
         (uuid.UUID(me["id"]), cid),
     )
     assert client.get("/search", params={"q": "binary heap"}).json()["hits"]
-    thumb = client.get(top["thumb_url"])
-    assert thumb.status_code == 200 and thumb.headers["cache-control"].startswith("private")
 
 
 @pytest.mark.db

@@ -5,7 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/../backend"
 
-ruff check . && ruff format --check .
+# separate lines: with set -e, a failure on the left of && would not stop the script
+ruff check .
+ruff format --check .
 ruff check --config pyproject.toml ../ml ../scripts
 ruff format --config pyproject.toml --check ../ml ../scripts
 python -m pytest -q

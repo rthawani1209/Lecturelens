@@ -9,6 +9,7 @@ from ...config import get_settings
 from ...db import connection
 from ...search.engine import search
 from ..deps import current_user
+from .media import media_url
 
 router = APIRouter(tags=["search"])
 
@@ -17,6 +18,8 @@ class HitOut(BaseModel):
     lecture_id: UUID
     lecture_title: str
     week: int | None
+    lecture_position: int
+    lecture_duration_s: float | None
     start_s: float
     end_s: float
     jump_s: float
@@ -55,8 +58,5 @@ def search_lectures(
     return {
         "query": q,
         "mode": mode,
-        "hits": [
-            {**h.__dict__, "thumb_url": f"/media/{h.thumb_key}" if h.thumb_key else None}
-            for h in hits
-        ],
+        "hits": [{**h.__dict__, "thumb_url": media_url(h.thumb_key)} for h in hits],
     }

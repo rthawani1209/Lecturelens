@@ -34,8 +34,14 @@ class LectureOut(BaseModel):
     id: UUID
     title: str
     week: int | None
+    position: int
     duration_s: float | None
     status: str
+
+
+class WeekOut(BaseModel):
+    week: int | None  # None = lectures nobody has put in a week yet
+    lectures: list[LectureOut]
 
 
 _LIST = """
@@ -90,8 +96,26 @@ def list_lectures(course_id: UUID, user: dict | None = Depends(current_user)) ->
         # same 404 for "missing" and "not yours" so ids can't be probed
         if access.course(conn, user["id"] if user else None, course_id) is None:
             raise HTTPException(404, "course not found")
-        return conn.execute(
-            "SELECT id, title, week, duration_s, status FROM lectures"
-            " WHERE course_id = %s ORDER BY position, created_at",
-            (course_id,),
-        ).fetchall()
+        return _lectures(conn, course_id)
+
+
+@router.get("/{course_id}/weeks", response_model=list[WeekOut])
+def list_weeks(course_id: UUID, user: dict | None = Depends(current_user)) -> list[dict]:
+    with connection() as conn:
+        if access.course(conn, user["id"] if user else None, course_id) is None:
+            raise HTTPException(404, "course not found")
+        lectures = _lectures(conn, course_id)
+    weeks: dict[int | None, list[dict]] = {}
+    for lec in lectures:
+        weeks.setdefault(lec["week"], []).append(lec)
+    # numbered weeks in order, then the unsorted ones
+    order = sorted(w for w in weeks if w is not None) + ([None] if None in weeks else [])
+    return [{"week": w, "lectures": weeks[w]} for w in order]
+
+
+def _lectures(conn, course_id: UUID) -> list[dict]:
+    return conn.execute(
+        "SELECT id, title, week, position, duration_s, status FROM lectures"
+        " WHERE course_id = %s ORDER BY position, created_at",
+        (course_id,),
+    ).fetchall()

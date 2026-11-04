@@ -10,6 +10,21 @@ class MediaError(RuntimeError):
     pass
 
 
+# Box types that can open an MP4/MOV file (ISO base media). Old QuickTime files may
+# start with padding boxes rather than ftyp.
+_ISO_BOXES = {b"ftyp", b"moov", b"mdat", b"free", b"skip", b"wide", b"pnot"}
+_MATROSKA = b"\x1a\x45\xdf\xa3"  # mkv and webm
+
+
+def looks_like_video(head: bytes) -> bool:
+    """Cheap check on the first bytes of a file, before we store gigabytes of it.
+
+    It only rules out obvious non-videos (a PDF renamed .mp4); ffprobe in the
+    pipeline still decides whether the file actually plays.
+    """
+    return head.startswith(_MATROSKA) or (len(head) >= 8 and head[4:8] in _ISO_BOXES)
+
+
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:

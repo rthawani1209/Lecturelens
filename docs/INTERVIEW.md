@@ -36,3 +36,21 @@ higher in the list: NDCG@10 stayed flat (0.719 to 0.720) and MRR dipped slightly
 did beat the simpler logistic regression baseline (0.696 NDCG@10), so the pairwise
 network was worth more than a linear model on the same features. The bigger NDCG gain
 came from tuning the fusion weights, not from the model.
+
+## Study: "How do the flashcards and Ask work without hallucinating?"
+
+Ask only answers from the lecture. It pulls the closest transcript passages (keyword
+and meaning search, merged the same way as search), numbers them, and sends them to
+Claude as quoted data with a JSON schema: every sentence has to cite at least one
+passage. I drop any sentence without a valid citation, and if nothing survives the
+answer is "not covered in this lecture" with a link to search the whole course. Text
+inside a transcript that looks like an instruction stays data; there's a test that
+plants one and checks it's ignored.
+
+Without an API key (CI, or someone running it locally) it still works: Ask quotes the
+two best on-topic sentences, and flashcards become fill-in-the-blank cards. Those pick
+terms that are rare across the course and were both said and shown on a slide, which
+filters out filler words. Reviews use SM-2, the classic spaced repetition schedule.
+
+Every AI call is logged per user with its token count, and there are limits per
+minute, day and month, so one user can't run up the bill.

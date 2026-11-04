@@ -6,6 +6,15 @@ name: Data bundle
 on:
   workflow_dispatch:
     inputs:
+      course:
+        description: "Which OCW course to mirror"
+        type: choice
+        default: "6.006"
+        options: ["6.006", "6.100L", "18.06"]
+      models:
+        description: "Rebuild the model bundle too"
+        type: boolean
+        default: false
       limit:
         description: "Only fetch the first N lectures (0 = all)"
         default: "0"
@@ -15,6 +24,7 @@ permissions:
 
 jobs:
   models:
+    if: inputs.models
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,12 +52,26 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install yt-dlp
-      - run: python scripts/fetch_ocw.py --out data/ocw/6.006 --limit ${{ inputs.limit }}
+      - name: Fetch
+        env:
+          COURSE: ${{ inputs.course }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          case "$COURSE" in
+            6.006) slug=6-006-introduction-to-algorithms-spring-2020 ;;
+            6.100L) slug=6-100l-introduction-to-cs-and-programming-using-python-fall-2022 ;;
+            18.06) slug=18-06-linear-algebra-spring-2010 ;;
+          esac
+          python scripts/fetch_ocw.py --course "$slug" --out "data/ocw/$COURSE" --limit "$LIMIT"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          COURSE: ${{ inputs.course }}
         run: |
-          gh release view ocw-6.006-s20 >/dev/null 2>&1 || \
-            gh release create ocw-6.006-s20 --title "Demo course: MIT 6.006 Spring 2020" \
+          # 6.006 keeps its original tag so existing downloads still work
+          tag="ocw-$(echo "$COURSE" | tr 'A-Z' 'a-z')"
+          [ "$COURSE" = 6.006 ] && tag=ocw-6.006-s20
+          gh release view "$tag" >/dev/null 2>&1 || \
+            gh release create "$tag" --title "Course: MIT $COURSE" \
               --notes "Lecture videos and captions from MIT OpenCourseWare (https://ocw.mit.edu), licensed CC BY-NC-SA 4.0. Mirrored here so the demo can be rebuilt without scraping OCW."
-          gh release upload ocw-6.006-s20 data/ocw/6.006/* --clobber
+          gh release upload "$tag" "data/ocw/$COURSE"/* --clobber

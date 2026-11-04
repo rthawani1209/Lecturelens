@@ -2,7 +2,8 @@
 
 Every statement about LectureLens that goes on a resume, where to see it's true, and
 how to reproduce it. Numbers come from committed results files, never typed in by hand.
-Status: **done** = built and proven; **planned** = not built yet (don't claim it yet).
+Status: **done** = built and proven; **planned** = not built yet (don't claim it yet);
+**cut** = dropped from scope (don't claim it).
 
 Repro commands assume the setup in the README (`scripts/get_models.sh`, Postgres with
 pgvector, the demo course processed with `scripts/seed_demo.py`).
@@ -40,7 +41,7 @@ pgvector, the demo course processed with `scripts/seed_demo.py`).
 | Slide/whiteboard capture: scene detection, near-duplicate removal, OCR | `backend/lecturelens/pipeline/{media,dedup,ocr}.py`, `backend/tests/test_{media,dedup}.py` | `cd backend && pytest tests/test_media.py tests/test_dedup.py` | | done |
 | Whole MIT 6.006 course processed | local demo DB | `python scripts/seed_demo.py --queue` | 21 lectures, 2,806 frames | done |
 | A tagger outage doesn't fail a lecture | `test_tagging_survives_tf_serving_being_down` | `cd backend && pytest tests/test_pipeline.py -k serving` | | done |
-| Speaker labels | | | | planned (day 8) |
+| Speaker labels | | | | cut |
 
 ## Accounts, uploads and security
 
@@ -48,9 +49,24 @@ pgvector, the demo course processed with `scripts/seed_demo.py`).
 |---|---|---|---|---|
 | Passwordless sign-in: email magic links and Google | `backend/lecturelens/auth.py`, `backend/tests/test_auth.py` | `cd backend && pytest tests/test_auth.py` | | done |
 | Private by default; group checks on every route; another user's course looks like a 404 | `backend/lecturelens/access.py`, `backend/tests/test_access.py`, `backend/tests/test_uploads.py` | `cd backend && pytest tests/test_access.py` | | done |
-| Resumable uploads on signed URLs (same protocol as Google Cloud Storage) | `backend/lecturelens/api/routes/uploads.py`, `test_chunked_upload_resumes_and_queues` | `cd backend && pytest tests/test_uploads.py` | | done (direct-to-storage in prod, 2 GB+ test planned) |
-| YouTube import | `backend/lecturelens/pipeline/fetch.py`, `test_youtube_import`, `test_youtube_links` | `cd backend && pytest tests/test_uploads.py -k youtube` | | done |
+| Resumable uploads on signed URLs (same protocol as Google Cloud Storage) | `backend/lecturelens/api/routes/uploads.py`, `test_chunked_upload_resumes_and_queues` | `cd backend && pytest tests/test_uploads.py` | | done (uploads go through the API; direct-to-storage is cut) |
+| Uploading the same video twice lands on the first lecture instead of a copy (SHA-256 of the file, per course) | `test_same_video_twice_points_at_the_first_lecture` | `cd backend && pytest tests/test_uploads.py -k same_video` | | done |
+| A failed lecture can be retried or deleted from the UI | `POST /lectures/{id}/retry`, `test_retry_requeues_only_failed_lectures`, `test_corrupt_video_fails_fast_with_a_plain_error`, the Try again and Delete buttons on the Upload screen | `cd backend && pytest tests/test_lecture_admin.py` | | done |
+| YouTube import | `backend/lecturelens/pipeline/fetch.py`, `test_youtube_import`, `test_youtube_links` | `cd backend && pytest tests/test_uploads.py -k youtube` | | done. **The download is mocked in tests** (`test_youtube_import` swaps in a local file). A real import runs only by hand: `.github/workflows/youtube.yml` |
 | Live pipeline progress over server-sent events | `GET /lectures/{id}/events`, `test_progress_stream` | `cd backend && pytest tests/test_uploads.py -k progress` | | done |
-| Media through signed URLs that expire after 15 minutes | | | | planned (day 8) |
-| Prompt-injection defense, AI budget and rate limits | | | | planned (day 9) |
-| Upload type checked by content, 4 GB limit, non-root workers, CSP, export/delete | | | | planned (day 11) |
+| Live progress isn't held back by response compression (`Cache-Control: no-transform`) | `backend/lecturelens/api/routes/lectures.py`, header check in `test_progress_stream`; found while testing in the browser | `cd backend && pytest tests/test_uploads.py -k progress` | | done |
+| Media through signed URLs that expire after 15 minutes | `backend/lecturelens/api/routes/watch.py`, `test_media_links_expire_and_cant_be_forged` | `cd backend && pytest tests/test_watch.py` | 15 min | done |
+| Upload type checked by its first bytes (not the file name), 4 GB limit | `looks_like_video` in `backend/lecturelens/pipeline/media.py`, `test_looks_like_video`, `test_non_video_is_refused_on_the_first_chunk`, `test_upload_rules`; `max_upload_bytes` in `config.py` | `cd backend && pytest tests/test_uploads.py` | 4 GB | done |
+| Prompt-injection defense: transcript text is quoted data, uncited sentences are dropped | `backend/lecturelens/study/ask.py`, `test_injected_transcript_text_stays_data`, `test_claude_answer_keeps_only_cited_sentences`, `test_all_uncited_means_not_covered` | `cd backend && pytest tests/test_study.py` | | done |
+| AI rate and token limits per user (per minute, day and month) | `backend/lecturelens/ai.py` (`guard`), `ai_calls` table, `test_ai_limits` | `cd backend && pytest tests/test_study.py -k limits` | 6/min, 200k tokens/day | done |
+| API and worker containers run as a non-root user; the web app sends a content security policy | `backend/Dockerfile`, `frontend/Dockerfile` (`USER`), `headers()` in `frontend/next.config.ts` | `cd frontend && npm run build && npm start`, then check the response headers | | done |
+| Sign-in links rate limited per address | `MAX_LIVE_LINKS` in `backend/lecturelens/auth.py`, `test_too_many_links_for_one_address` | `cd backend && pytest tests/test_auth.py` | 5 unused links per 15 min | done |
+| Export / delete my data | | | | cut |
+
+## Study and Ask
+
+| Claim | Proof | Reproduce | Number | Status |
+|---|---|---|---|---|
+| Flashcards per lecture with SM-2 spaced repetition | `backend/lecturelens/study/srs.py`, `backend/tests/test_srs.py`, `test_review_schedules_the_card` | `cd backend && pytest tests/test_srs.py tests/test_study.py` | | done |
+| Cards written by Claude when a key is set; without one, fill-in-the-blank cards from terms that were both said and shown on a slide | `backend/lecturelens/study/cards.py`, `test_claude_cards` (fake model), `test_cloze_cards_without_an_api_key` | `cd backend && pytest tests/test_study.py` | | done (the Claude path is tested with a fake model; CI has no API key) |
+| Ask a lecture a question; every sentence of the answer cites a timestamp, and it says "not covered" instead of guessing | `backend/lecturelens/study/{retrieve,ask}.py`, `test_extractive_answer_quotes_the_lecture`, `test_all_uncited_means_not_covered` | `cd backend && pytest tests/test_study.py` | | done |

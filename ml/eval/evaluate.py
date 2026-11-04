@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from lecturelens.db import connection
+from lecturelens.search import engine
 from lecturelens.search.engine import collapse, fuse, hydrate, rerank, retrieve
 from lecturelens.search.metrics import evaluate
 
@@ -62,6 +63,8 @@ def judge(query: dict, hits: list, positions: dict) -> tuple[list[str], dict[str
 
 # reranked methods: (retrievers to fuse, model that re-scores the top 50)
 RERANKED = {"hybrid+lr": ("hybrid", "lr"), "hybrid+reranker": ("hybrid", "mlp")}
+# hand-picked fusion weights from day 3, before tune_rrf.py; kept as the baseline
+DAY3_WEIGHTS = {"keyword": 1.0, "meaning": 1.0, "ocr": 0.8, "visual": 0.6}
 
 
 def run(methods: list[str], queries: list[dict], limit: int = 10) -> dict:
@@ -69,15 +72,19 @@ def run(methods: list[str], queries: list[dict], limit: int = 10) -> dict:
     results = {}
     for method in methods:
         runs, qrels, latencies = {}, {}, []
+        weights = engine.WEIGHTS
+        if method == "hybrid_day3_weights":
+            engine.WEIGHTS = DAY3_WEIGHTS
         for q in queries:
             t0 = time.perf_counter()
-            mode, model = RERANKED.get(method, (method, None))
+            mode, model = RERANKED.get(method, (method.removesuffix("_day3_weights"), None))
             ranked = fuse(retrieve(q["query"], [course], mode))
             if model:
                 ranked = rerank(q["query"], ranked, model)
             hits = hydrate(q["query"], collapse(ranked, limit))
             latencies.append(time.perf_counter() - t0)
             runs[q["id"]], qrels[q["id"]] = judge(q, hits, positions)
+        engine.WEIGHTS = weights
         scores = evaluate(runs, qrels, ks=(1, 5, 10))
         scores["p50_ms"] = float(np.percentile(latencies, 50) * 1000)
         results[method] = scores
@@ -99,7 +106,16 @@ def main() -> None:
     ap.add_argument(
         "--methods",
         nargs="+",
-        default=["keyword", "meaning", "visual", "text", "hybrid", "hybrid+lr", "hybrid+reranker"],
+        default=[
+            "keyword",
+            "meaning",
+            "visual",
+            "text",
+            "hybrid_day3_weights",
+            "hybrid",
+            "hybrid+lr",
+            "hybrid+reranker",
+        ],
     )
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()

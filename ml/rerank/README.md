@@ -49,27 +49,26 @@ served scores match within 1e-4.
 
 Val NDCG@10: meaning-only 0.756, hybrid 0.748, hybrid + LR 0.710, hybrid + re-ranker
 0.759. That is a tie (62 questions; 0.003 is one question moving a rank), so the
-**default search is meaning-only**: same quality on val at 1/20 of the latency
-(about 10 ms vs 190 ms). The rule, fixed before looking at test: switch the default
+**default search is meaning-only**: same quality on val at about 1/13 of the latency
+(about 20 ms vs 280 ms on the test run). The rule, fixed before looking at test: switch the default
 only if a configuration beats meaning-only on val by at least 0.01.
 
 ## Results (38 held-out test questions, `ml/eval/results_test.json`)
 
 | method | recall@5 | MRR | NDCG@10 | p50 |
 |---|---|---|---|---|
-| keyword only | 0.632 | 0.496 | 0.523 | 22 ms |
-| hybrid, original weights (day 3) | 0.776 | 0.611 | 0.655 | |
-| hybrid, tuned weights | 0.816 | 0.684 | 0.719 | 95 ms |
-| hybrid + logistic regression | 0.829 | 0.682 | 0.696 | 197 ms |
-| hybrid + re-ranker | **0.882** | 0.675 | 0.720 | 196 ms |
-| **meaning only (default)** | 0.855 | **0.779** | **0.786** | 11 ms |
+| keyword only | 0.632 | 0.496 | 0.523 | 43 ms |
+| hybrid, original weights (day 3) | 0.776 | 0.611 | 0.655 | 140 ms |
+| hybrid, tuned weights | 0.816 | 0.684 | 0.719 | 128 ms |
+| hybrid + logistic regression | 0.829 | 0.682 | 0.696 | 298 ms |
+| hybrid + re-ranker | **0.882** | 0.675 | 0.720 | 280 ms |
+| **meaning only (default)** | 0.855 | **0.779** | **0.786** | 21 ms |
 
 What this shows, honestly:
-- Tuning the fusion on val and adding the re-ranker took hybrid search from 0.655 to
-  0.720 NDCG@10 and recall@5 from 77.6% to 88.2%, the highest recall@5 of any method.
-  The re-ranker beats the logistic regression.
-- Over tuned hybrid alone, the re-ranker helps recall@5 (81.6% to 88.2%) but not
-  NDCG@10 (0.719 to 0.720) or MRR.
+- Two separate effects. Tuning the fusion weights on val took hybrid from 0.655 to
+  0.719 NDCG@10 (recall@5 77.6% to 81.6%). The re-ranker then took recall@5 from 81.6%
+  to 88.2%, the highest of any method, with NDCG@10 flat (0.719 to 0.720). It beats the
+  logistic regression baseline (0.696).
 - On this course, meaning-only search is the best single method, which is why it's
   the default. 6.006 is spoken explanation in front of a chalkboard, so slide text and
   CLIP add little, and generated queries still don't sound like real questions. Hybrid

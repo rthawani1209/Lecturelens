@@ -19,3 +19,12 @@ if [ ! -x "$ml_python" ]; then
   exit 1
 fi
 "$ml_python" -m pytest -q ../ml/tests
+
+# frontend: the same steps as the CI frontend job
+cd ../frontend
+if [ ! -d node_modules ]; then npm ci; fi
+npx prettier --check .
+npx eslint --max-warnings 0 .
+npx tsc --noEmit
+npx vitest run
+npm run build

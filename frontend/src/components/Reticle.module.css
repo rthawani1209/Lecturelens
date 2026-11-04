@@ -1,0 +1,39 @@
+.wrap {
+  position: relative;
+}
+
+.c {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 0 solid var(--accent);
+  pointer-events: none;
+}
+
+.tl {
+  top: var(--inset);
+  left: var(--inset);
+  border-top-width: 2px;
+  border-left-width: 2px;
+}
+
+.tr {
+  top: var(--inset);
+  right: var(--inset);
+  border-top-width: 2px;
+  border-right-width: 2px;
+}
+
+.bl {
+  bottom: var(--inset);
+  left: var(--inset);
+  border-bottom-width: 2px;
+  border-left-width: 2px;
+}
+
+.br {
+  bottom: var(--inset);
+  right: var(--inset);
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+}

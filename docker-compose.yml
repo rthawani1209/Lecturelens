@@ -51,6 +51,16 @@ services:
       minio: {condition: service_started}
       serving: {condition: service_started}
 
+  web:
+    build:
+      context: ./frontend
+      args: {API_URL: "http://api:8000"}
+    environment:
+      API_URL: http://api:8000
+    ports: ["3000:3000"]
+    depends_on:
+      api: {condition: service_started}
+
   # TF Serving for the frame tagger (ml/tagger) and the re-ranker (ml/rerank/export.py).
   # Both callers fall back to in-process NumPy if it's down.
   serving:

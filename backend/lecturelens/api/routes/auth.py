@@ -16,6 +16,8 @@ from ...auth import (
 )
 from ...config import get_settings
 from ...db import connection
+from ...storage import get_storage
+from ..client_ip import client_ip
 from ..deps import SESSION_COOKIE, current_user, require_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -159,14 +161,63 @@ def google_callback(request: Request, code: str = "", state: str = "") -> Redire
 
 
 @router.post("/demo", response_model=MeOut)
-def demo(response: Response) -> dict:
+def demo(request: Request, response: Response) -> dict:
     """Public demo only: sign in as a new throwaway account, no email needed."""
-    if not get_settings().demo_login:
+    s = get_settings()
+    if not s.demo_login:
         raise HTTPException(404, "not found")
-    with connection() as conn:
+    ip = client_ip(request)
+    with connection() as conn, conn.transaction():
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext('demo_signins'))")
+        n = conn.execute(
+            "SELECT count(*) AS n FROM demo_signins"
+            " WHERE ip = %s AND at > now() - interval '1 hour'",
+            (ip,),
+        ).fetchone()["n"]
+        if n >= s.demo_logins_per_hour:
+            raise HTTPException(429, "That's a lot of demo accounts. Try again in an hour.")
+        conn.execute("INSERT INTO demo_signins (ip) VALUES (%s)", (ip,))
         uid = get_or_create_user(conn, f"demo-{secrets.token_hex(6)}@demo.invalid", "Demo user")
+    remove_old_demo_accounts()
     _set_session(response, create_session(uid))
     return _me(uid)
+
+
+def remove_old_demo_accounts(max_age: str = "1 day") -> int:
+    """Demo accounts last a day; then they go, with their courses and videos."""
+    with connection() as conn, conn.transaction():
+        users = [
+            r["id"]
+            for r in conn.execute(
+                "SELECT id FROM users WHERE email LIKE '%%@demo.invalid'"
+                " AND created_at < now() - %s::interval",
+                (max_age,),
+            )
+        ]
+        if not users:
+            return 0
+        groups = [
+            r["group_id"]
+            for r in conn.execute(
+                "SELECT m.group_id FROM group_members m JOIN groups g ON g.id = m.group_id"
+                " WHERE m.user_id = ANY(%s) AND g.personal",
+                (users,),
+            )
+        ]
+        lectures = [
+            r["id"]
+            for r in conn.execute(
+                "SELECT l.id FROM lectures l JOIN courses c ON c.id = l.course_id"
+                " WHERE c.group_id = ANY(%s)",
+                (groups,),
+            )
+        ]
+        conn.execute("DELETE FROM groups WHERE id = ANY(%s)", (groups,))
+        conn.execute("DELETE FROM users WHERE id = ANY(%s)", (users,))
+    storage = get_storage()
+    for lid in lectures:
+        storage.delete_prefix(f"lectures/{lid}/")
+    return len(users)
 
 
 @router.get("/me", response_model=MeOut)

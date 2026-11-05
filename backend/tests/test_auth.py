@@ -154,3 +154,39 @@ def test_demo_login_is_off_unless_enabled(client, db, monkeypatch):
         assert client.post("/auth/demo").json()["id"] != first["id"]
     finally:
         get_settings.cache_clear()
+
+
+def test_demo_accounts_are_limited_per_address_and_expire(client, db, storage, monkeypatch):
+    from lecturelens.config import get_settings
+
+    monkeypatch.setenv("DEMO_LOGIN", "1")
+    monkeypatch.setenv("DEMO_LOGINS_PER_HOUR", "2")
+    monkeypatch.setenv("TRUST_FORWARDED_FOR", "1")
+    get_settings.cache_clear()
+    try:
+        visitor = {"X-Forwarded-For": "203.0.113.7, 172.18.0.5"}
+        assert client.post("/auth/demo", headers=visitor).status_code == 200
+        first = client.post("/auth/demo", headers=visitor).json()
+        r = client.post("/auth/demo", headers=visitor)
+        assert r.status_code == 429 and "an hour" in r.json()["detail"]
+        # someone else isn't held up by that visitor
+        other = client.post("/auth/demo", headers={"X-Forwarded-For": "198.51.100.2"})
+        assert other.status_code == 200
+
+        # a day later the account goes, along with its course and its video
+        course = client.post("/courses", json={"title": "Mine"}).json()["id"]
+        lid = db.execute(
+            "INSERT INTO lectures (course_id, title, status)"
+            " VALUES (%s, 'L', 'ready') RETURNING id",
+            (course,),
+        ).fetchone()[0]
+        storage.put_file(f"lectures/{lid}/source.mp4", __file__)
+        db.execute("UPDATE users SET created_at = now() - interval '2 days'")
+        assert auth_routes.remove_old_demo_accounts() == 3
+        assert (
+            db.execute("SELECT count(*) FROM courses WHERE id = %s", (course,)).fetchone()[0] == 0
+        )
+        assert not storage.exists(f"lectures/{lid}/source.mp4")
+        assert first["email"].endswith("@demo.invalid")
+    finally:
+        get_settings.cache_clear()

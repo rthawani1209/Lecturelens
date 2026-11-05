@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # lectures one account may add per 24 h (0 = no limit); keeps a public demo affordable
     daily_lectures_per_user: int = 0
     daily_lectures_total: int = 0  # same, for everyone together
+    daily_lectures_per_ip: int = 0  # same, per network address (demo accounts are free)
+    demo_logins_per_hour: int = 5  # per network address
+    # behind our own proxy (Caddy) the client's address is the first X-Forwarded-For
+    # entry; anywhere else that header is whatever the client chose to send
+    trust_forwarded_for: bool = False
     cookie_secure: bool = False  # true behind https
     google_client_id: str = ""
     google_client_secret: str = ""

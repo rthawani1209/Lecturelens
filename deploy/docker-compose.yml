@@ -15,6 +15,9 @@ x-backend-env: &backend-env
   DEMO_LOGIN: ${DEMO_LOGIN:-false}
   DAILY_LECTURES_PER_USER: ${DAILY_LECTURES_PER_USER:-0}
   DAILY_LECTURES_TOTAL: ${DAILY_LECTURES_TOTAL:-0}
+  DAILY_LECTURES_PER_IP: ${DAILY_LECTURES_PER_IP:-0}
+  # Caddy sets X-Forwarded-For to the real client address
+  TRUST_FORWARDED_FOR: "true"
   MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-4294967296}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   SMTP_URL: ${SMTP_URL:-}
@@ -54,6 +57,9 @@ services:
     build: ../backend
     command: ["python", "-m", "lecturelens.db.migrate"]
     environment: *backend-env
+    # mounted here first, alone: Docker fills a new volume from the image (owned by
+    # the app user), and api + worker doing that at the same moment collide
+    volumes: [appdata:/app/data]
     depends_on:
       postgres: {condition: service_healthy}
 
@@ -64,7 +70,7 @@ services:
       <<: *backend-env
       RERANKER_URL: http://serving:8501
     volumes:
-      - appdata:/app/data
+      - {type: volume, source: appdata, target: /app/data, volume: {nocopy: true}}
       - ../models:/models:ro
     depends_on:
       migrate: {condition: service_completed_successfully}
@@ -94,7 +100,7 @@ services:
       <<: *backend-env
       TAGGER_URL: http://serving:8501
     volumes:
-      - appdata:/app/data
+      - {type: volume, source: appdata, target: /app/data, volume: {nocopy: true}}
       - ../models:/models:ro
       - ../data/ocw:/ocw:ro
       - ../scripts:/scripts:ro

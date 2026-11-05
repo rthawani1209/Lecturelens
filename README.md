@@ -117,8 +117,8 @@ Or paste `deploy/cloud-init.yaml` as the server's user data when creating it, an
 runs by itself. The script installs Docker, writes `deploy/.env` with fresh secrets,
 downloads the models and the MIT lectures, starts the stack behind Caddy with an
 HTTPS certificate for `<server-ip>.sslip.io`, and queues the lectures (a few hours on
-CPU; the site works while they process). A timer pulls `main` every 15 minutes and
-rebuilds if anything changed. The public site has a "Try it without an account"
+CPU; the site works while they process). A timer checks `main` every 15 minutes and
+rebuilds once a new commit's GitHub checks have all passed. The public site has a "Try it without an account"
 button and caps uploads per day; both are settings in `deploy/.env`.
 
 Check a running site end to end:

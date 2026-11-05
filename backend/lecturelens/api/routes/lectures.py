@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from pathlib import PurePosixPath
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +15,7 @@ from ...db import connection
 from ...pipeline.fetch import canonical_url, youtube_id
 from ...pipeline.stages import STAGES
 from ...storage import get_storage
+from ..client_ip import client_ip
 from ..deps import current_user, require_user
 from . import uploads as uploads_routes
 
@@ -83,7 +84,9 @@ def _next_position(conn, course_id: UUID) -> int:
 
 
 @router.post("/courses/{course_id}/lectures", response_model=UploadOut, status_code=201)
-def start_upload(course_id: UUID, body: UploadIn, user: dict = Depends(require_user)) -> dict:
+def start_upload(
+    course_id: UUID, body: UploadIn, request: Request, user: dict = Depends(require_user)
+) -> dict:
     """Create the lecture and hand back a signed URL to send the file to in chunks."""
     s = get_settings()
     ext = PurePosixPath(body.filename).suffix.lower()
@@ -95,7 +98,7 @@ def start_upload(course_id: UUID, body: UploadIn, user: dict = Depends(require_u
     with connection() as conn, conn.transaction():
         if access.course(conn, user["id"], course_id, write=True) is None:
             raise HTTPException(404, "course not found")
-        _daily_limit(conn, user["id"])
+        _daily_limit(conn, user["id"], client_ip(request))
         lid = conn.execute(
             "INSERT INTO lectures (course_id, title, week, position, status, created_by)"
             " VALUES (%s, %s, %s, %s, 'uploading', %s) RETURNING id",
@@ -111,14 +114,16 @@ def start_upload(course_id: UUID, body: UploadIn, user: dict = Depends(require_u
 
 
 @router.post("/courses/{course_id}/lectures/import", response_model=LectureDetail, status_code=201)
-def import_lecture(course_id: UUID, body: ImportIn, user: dict = Depends(require_user)) -> dict:
+def import_lecture(
+    course_id: UUID, body: ImportIn, request: Request, user: dict = Depends(require_user)
+) -> dict:
     vid = youtube_id(body.url)
     if vid is None:
         raise HTTPException(422, "paste a YouTube video link")
     with connection() as conn, conn.transaction():
         if access.course(conn, user["id"], course_id, write=True) is None:
             raise HTTPException(404, "course not found")
-        _daily_limit(conn, user["id"])
+        _daily_limit(conn, user["id"], client_ip(request))
         # empty title: the fetch stage fills in the video's own title
         lid = conn.execute(
             "INSERT INTO lectures (course_id, title, week, position, status, source_url,"
@@ -136,14 +141,14 @@ def import_lecture(course_id: UUID, body: ImportIn, user: dict = Depends(require
     return _detail(lid)
 
 
-def _daily_limit(conn, user_id) -> None:
+def _daily_limit(conn, user_id, ip: str) -> None:
     """Count this addition against today's caps, or refuse it with a 429.
 
     Runs inside the caller's transaction. The advisory lock makes concurrent
     requests take turns, so twelve at once can't all see "4 so far".
     """
     s = get_settings()
-    if not (s.daily_lectures_per_user or s.daily_lectures_total):
+    if not (s.daily_lectures_per_user or s.daily_lectures_total or s.daily_lectures_per_ip):
         return
     conn.execute("SELECT pg_advisory_xact_lock(hashtext('lecture_adds'))")
     if s.daily_lectures_per_user:
@@ -165,7 +170,17 @@ def _daily_limit(conn, user_id) -> None:
             raise HTTPException(
                 429, "This demo has processed all the uploads it can for today. Try again tomorrow."
             )
-    conn.execute("INSERT INTO lecture_adds (user_id) VALUES (%s)", (user_id,))
+    if s.daily_lectures_per_ip:
+        n = conn.execute(
+            "SELECT count(*) AS n FROM lecture_adds"
+            " WHERE ip = %s AND at > now() - interval '1 day'",
+            (ip,),
+        ).fetchone()["n"]
+        if n >= s.daily_lectures_per_ip:
+            raise HTTPException(
+                429, "You've added as many lectures today as this demo allows. Try again tomorrow."
+            )
+    conn.execute("INSERT INTO lecture_adds (user_id, ip) VALUES (%s, %s)", (user_id, ip))
 
 
 def _detail(lecture_id: UUID) -> dict:

@@ -324,3 +324,19 @@ def test_delete_removes_a_half_sent_file(setup, storage):
     assert len(parts) == 1
     assert client.delete(f"/lectures/{up['lecture_id']}").status_code == 204
     assert not parts[0].exists()
+
+
+def test_per_address_cap_covers_every_account(setup, sign_in, monkeypatch):
+    from lecturelens.config import get_settings
+
+    client, course = setup
+    monkeypatch.setenv("DAILY_LECTURES_PER_IP", "1")
+    get_settings.cache_clear()
+    _start(client, course, MP4_HEAD)
+    # a new account from the same machine doesn't get a fresh allowance
+    sign_in(client, "grace@example.com")
+    other = client.post("/courses", json={"title": "Linear algebra"}).json()["id"]
+    r = client.post(
+        f"/courses/{other}/lectures", json={"title": "x", "filename": "x.mp4", "size": 100}
+    )
+    assert r.status_code == 429

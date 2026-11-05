@@ -3,7 +3,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/rthawani1209/lecturelens/main/deploy/bootstrap.sh | bash
 # Installs Docker, clones the repo to /opt/lecturelens, writes deploy/.env with fresh
 # secrets, downloads the models and the MIT lectures, starts the stack behind HTTPS,
-# queues the lectures for processing, and turns on hourly updates from main.
+# queues the lectures for processing, and turns on updates from main (every 15
+# minutes, only once that commit's GitHub checks have passed).
 # Safe to run again: it keeps the existing .env and skips what's already there.
 set -euo pipefail
 exec > >(tee -a /var/log/lecturelens-bootstrap.log) 2>&1
@@ -37,6 +38,7 @@ SECRET_KEY=$(openssl rand -hex 32)
 DEMO_LOGIN=true
 DAILY_LECTURES_PER_USER=2
 DAILY_LECTURES_TOTAL=20
+DAILY_LECTURES_PER_IP=3
 MAX_UPLOAD_BYTES=1073741824
 ANTHROPIC_API_KEY=
 SMTP_URL=

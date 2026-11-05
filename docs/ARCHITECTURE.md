@@ -104,6 +104,6 @@ worker instead of MinIO, since there is only one machine. The worker processes o
 lecture at a time so whisper and OCR can't run the server out of memory. Visitors can
 press "Try it without an account" to get a throwaway account of their own, and
 uploads are capped per account and per day so a public demo can't be run up. A
-systemd timer pulls `main` every 15 minutes and rebuilds, and the Deploy check
+systemd timer pulls `main` every 15 minutes and rebuilds once that commit's checks pass, and the Deploy check
 workflow starts this same stack on a fresh machine and runs `deploy/smoke.py` against
 it whenever the backend or the deploy files change.

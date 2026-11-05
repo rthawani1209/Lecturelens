@@ -62,10 +62,22 @@ export function Player({ ref, src, start, length, transcript, tag, onTime, onExp
     time: () => video.current?.currentTime ?? 0,
   }));
 
+  // The browser draws captions at the very bottom, under our control bar, so we
+  // keep the track hidden (it still fires cue changes) and draw them ourselves.
+  const [cue, setCue] = useState("");
   useEffect(() => {
     const track = video.current?.textTracks[0];
-    if (track) track.mode = captions ? "showing" : "hidden";
-  }, [captions, vtt]);
+    if (!track) return;
+    track.mode = "hidden";
+    const show = () =>
+      setCue(
+        Array.from(track.activeCues ?? [])
+          .map((c) => (c as VTTCue).text)
+          .join("\n"),
+      );
+    track.addEventListener("cuechange", show);
+    return () => track.removeEventListener("cuechange", show);
+  }, [vtt]);
 
   useEffect(() => {
     if (video.current) video.current.playbackRate = speed;
@@ -161,6 +173,11 @@ export function Player({ ref, src, start, length, transcript, tag, onTime, onExp
         </video>
       </Reticle>
       {tag && <span className={`mono ${styles.onScreen}`}>{tag} · auto-tagged</span>}
+      {captions && cue && (
+        <div className={styles.caption} data-testid="caption">
+          {cue}
+        </div>
+      )}
       {errors > 0 && (
         <div className={styles.failed} role="alert">
           {errors < 2

@@ -54,3 +54,20 @@ filters out filler words. Reviews use SM-2, the classic spaced repetition schedu
 
 Every AI call is logged per user with its token count, and there are limits per
 minute, day and month, so one user can't run up the bill.
+
+## Testing: "How do you know the UI works?"
+
+Unit tests cover the backend (pytest) and the upload client (Vitest), but the thing I
+trust most is the Playwright suite. `scripts/e2e.sh` starts the real stack (API,
+Celery worker, Postgres, Redis, the production Next.js build), seeds a short generated
+lecture through the real pipeline, and clicks every control on every screen. Any
+console error fails the test. The upload test kills a chunk's connection twice,
+cancels, resumes, waits for the live pipeline to finish, and then searches for
+something said in the video. There is also a pass at phone width (390 px).
+
+It found a real bug: Next.js compressed the progress stream, which buffered it, so the
+pipeline screen sat still until processing finished. Adding `Cache-Control:
+no-transform` fixed it, and a backend test now checks the header.
+
+What's mocked: the YouTube download. CI can't depend on YouTube, so a manual workflow
+runs a real import instead.

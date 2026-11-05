@@ -28,3 +28,7 @@ npx eslint --max-warnings 0 .
 npx tsc --noEmit
 npx vitest run
 npm run build
+
+# browser tests on a freshly seeded stack (same script as the CI e2e job)
+cd ..
+scripts/e2e.sh

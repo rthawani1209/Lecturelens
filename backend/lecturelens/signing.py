@@ -17,5 +17,10 @@ def sign(value: str, ttl_s: int) -> tuple[int, str]:
     return exp, _mac(value, exp)
 
 
+# nothing we sign lives longer than a day, so a later expiry is a forgery
+MAX_TTL_S = 24 * 3600
+
+
 def verify(value: str, exp: int, sig: str) -> bool:
-    return exp > time.time() and hmac.compare_digest(_mac(value, exp), sig)
+    now = time.time()
+    return now < exp <= now + MAX_TTL_S and hmac.compare_digest(_mac(value, exp), sig)

@@ -51,3 +51,13 @@ def test_ocr_reads_slide_titles(lecture_fixture, tmp_path):
 
 def test_ocr_clean_drops_junk_lines():
     assert clean("  Running   Time \n|| ~\n a\nO(E log V)") == "Running Time\nO(E log V)"
+
+
+def test_ocr_timeout_skips_the_frame(monkeypatch, tmp_path):
+    import subprocess
+
+    def slow(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, kw["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", slow)
+    assert ocr(tmp_path / "frame.jpg") == ""

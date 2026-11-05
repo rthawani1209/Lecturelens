@@ -103,6 +103,7 @@ export type Card = {
 
 export type Deck = {
   lecture_id: string;
+  course_id: string;
   lecture_title: string;
   course_code: string;
   mode: "claude" | "cloze";
@@ -166,7 +167,10 @@ export const api = {
     if (opts.tag) p.set("tag", opts.tag);
     return get<SearchResult>(`/search?${p}`, { signal: opts.signal });
   },
-  providers: () => get<{ email: boolean; google: boolean }>("/auth/providers"),
+  providers: () =>
+    get<{ email: boolean; google: boolean; demo?: boolean; max_upload_bytes?: number }>(
+      "/auth/providers",
+    ),
   me: () => get<{ user: Me | null }>("/auth/session", { cache: "no-store" }).then((s) => s.user),
   emailLink: (email: string) => send<void>("POST", "/auth/email", { email }),
   verify: (token: string) => send<Me>("POST", "/auth/email/verify", { token }),
@@ -190,6 +194,8 @@ export const api = {
   importYoutube: (courseId: string, body: { url: string; title: string; week: number | null }) =>
     send<LectureDetail>("POST", `/courses/${courseId}/lectures/import`, body),
   lecture: (id: string) => get<LectureDetail>(`/lectures/${id}`, { cache: "no-store" }),
+  lectures: (courseId: string) =>
+    get<Lecture[]>(`/courses/${courseId}/lectures`, { cache: "no-store" }),
   retry: (id: string) => send<LectureDetail>("POST", `/lectures/${id}/retry`),
   deleteLecture: (id: string) => send<void>("DELETE", `/lectures/${id}`),
   studyCourse: (courseId: string) =>

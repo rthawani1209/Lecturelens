@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type Course, type Me } from "@/lib/api";
 import { upload, UploadError, type Progress } from "@/lib/upload";
+import { MyLectures } from "./MyLectures";
 import { Pipeline } from "./Pipeline";
 import styles from "./Upload.module.css";
 
@@ -77,10 +78,15 @@ export function UploadView() {
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sending, setSending] = useState<Sending | null>(null);
+  const [limit, setLimit] = useState("4 GB");
   const abort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     api.me().then(setMe, () => setMe(null));
+    api.providers().then(
+      (p) => p.max_upload_bytes && setLimit(sizeLabel(p.max_upload_bytes)),
+      () => {},
+    );
   }, []);
 
   useEffect(() => {
@@ -109,7 +115,9 @@ export function UploadView() {
     if (!f) return;
     setFormError(null);
     setFile(f);
-    if (!title) setTitle(f.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " "));
+    // a title we made from the last file follows the new one; a typed one stays
+    const fromName = (n: string) => n.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+    if (!title || (file && title === fromName(file.name))) setTitle(fromName(f.name));
   };
 
   async function ensureCourse(): Promise<string> {
@@ -368,7 +376,8 @@ export function UploadView() {
               <>
                 <span className={styles.dropTitle}>Drop a lecture video, or browse</span>
                 <span className="mono">
-                  mp4 · mov · m4v · mkv · webm, up to 4 GB. Uploads resume if the connection drops.
+                  mp4 · mov · m4v · mkv · webm, up to {limit}. Uploads resume if the connection
+                  drops.
                 </span>
               </>
             )}
@@ -467,6 +476,16 @@ export function UploadView() {
       {lectureParam && (
         <Pipeline key={lectureParam} id={lectureParam} onDeleted={() => showLecture(null)} />
       )}
+
+      {courseId && !newCourse && (
+        <MyLectures courseId={courseId} current={lectureParam} onOpen={showLecture} />
+      )}
     </main>
   );
+}
+
+// same wording as the server's "too big" message
+function sizeLabel(bytes: number): string {
+  const gb = bytes / 1024 ** 3;
+  return gb >= 1 ? `${+gb.toFixed(2)} GB` : `${+(bytes / 1024 ** 2).toFixed(2)} MB`;
 }

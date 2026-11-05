@@ -107,9 +107,22 @@
   cursor: pointer;
 }
 
-.video::cue {
-  font-family: var(--font-sans), sans-serif;
-  background: rgba(10, 12, 15, 0.8);
+/* drawn by Player above the control bar, not by the browser */
+.caption {
+  position: absolute;
+  left: 50%;
+  bottom: 104px;
+  transform: translateX(-50%);
+  max-width: min(80%, 900px);
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(10, 12, 15, 0.82);
+  color: #e8edf2;
+  font-size: clamp(14px, 1.6vw, 22px);
+  line-height: 1.4;
+  text-align: center;
+  white-space: pre-line;
+  pointer-events: none;
 }
 
 .onScreen {
@@ -539,4 +552,27 @@
 .loadingPlayer {
   aspect-ratio: 16 / 9;
   max-width: 900px;
+}
+
+/* phones: a 200px-tall video can't hold the controls on top of it, so they sit below */
+@media (max-width: 640px) {
+  .controls {
+    position: static;
+    padding: 8px 10px 10px;
+    background: #050608;
+  }
+
+  .failed {
+    inset: 0 0 auto;
+    aspect-ratio: 16 / 9;
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  .caption {
+    bottom: auto;
+    /* just above the bottom of the video: page gutters are 16px at this width */
+    top: calc((100vw - 32px) * 9 / 16 - 48px);
+    max-width: 92%;
+  }
 }

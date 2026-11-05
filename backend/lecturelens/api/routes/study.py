@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ... import access, ai
 from ...db import connection
@@ -47,6 +47,7 @@ class CardOut(BaseModel):
 
 class DeckOut(BaseModel):
     lecture_id: UUID
+    course_id: UUID
     lecture_title: str
     course_code: str
     mode: str  # claude | cloze
@@ -60,6 +61,8 @@ class ReviewIn(BaseModel):
 
 
 class AskIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)  # "   " is empty
+
     question: str = Field(min_length=2, max_length=500)
 
 
@@ -81,6 +84,13 @@ def _readable_lecture(conn, user: dict, lecture_id: UUID) -> dict:
     if lec is None:
         raise HTTPException(404)
     return lec
+
+
+def _ready(lec: dict) -> None:
+    if lec["status"] == "failed":
+        raise HTTPException(409, "This lecture didn't finish processing.")
+    if lec["status"] != "ready":
+        raise HTTPException(409, "This lecture is still processing.")
 
 
 @router.get("/study/courses/{course_id}", response_model=list[StudyWeek])
@@ -108,10 +118,10 @@ def course_decks(course_id: UUID, user: dict = Depends(require_user)) -> list[di
     return [{"week": w, "lectures": lecs} for w, lecs in weeks.items()]
 
 
-def _rarity(conn, course_id: UUID, words: list[str]) -> dict[str, float]:
-    """idf of each word across the course's lectures."""
+def _rarity(conn, course_id: UUID, words: list[str]) -> tuple[dict[str, float], int]:
+    """idf of each word across the course's lectures, and how many lectures there are."""
     if not words:
-        return {}
+        return {}, 0
     rows = conn.execute(
         """
         SELECT w, count(DISTINCT s.lecture_id) AS df,
@@ -123,7 +133,8 @@ def _rarity(conn, course_id: UUID, words: list[str]) -> dict[str, float]:
         """,
         {"c": course_id, "w": words},
     ).fetchall()
-    return {r["w"]: math.log((r["n"] + 1) / (r["df"] + 1)) + 1 for r in rows}
+    n = rows[0]["n"] if rows else 0
+    return {r["w"]: math.log((r["n"] + 1) / (r["df"] + 1)) + 1 for r in rows}, n
 
 
 def _deck(conn, user: dict, lec: dict) -> dict:
@@ -158,7 +169,8 @@ def _deck(conn, user: dict, lec: dict) -> dict:
             ).fetchall()
         ]
         scores = making.candidates([ln["text"] for ln in lines], slides)
-        terms = making.key_terms(scores, _rarity(conn, lec["course_id"], list(scores)))
+        rarity, n = _rarity(conn, lec["course_id"], list(scores))
+        terms = making.key_terms(scores, rarity, n)
         made, mode = making.cloze(lines, terms), "cloze"
 
     with conn.transaction():
@@ -211,6 +223,7 @@ def _deck_out(conn, lec: dict, deck: dict) -> dict:
     ]
     return {
         "lecture_id": lec["id"],
+        "course_id": lec["course_id"],
         "lecture_title": lec["title"],
         "course_code": course["code"] or course["title"],
         "mode": deck["mode"],
@@ -225,8 +238,7 @@ def open_deck(lecture_id: UUID, user: dict = Depends(require_user)) -> dict:
     """The user's deck for a lecture, written the first time it's opened."""
     with connection() as conn:
         lec = _readable_lecture(conn, user, lecture_id)
-        if lec["status"] != "ready":
-            raise HTTPException(409, "This lecture is still processing.")
+        _ready(lec)
         deck = _deck(conn, user, lec)
         return _deck_out(conn, lec, deck)
 
@@ -261,10 +273,11 @@ def review(card_id: UUID, body: ReviewIn, user: dict = Depends(require_user)) ->
 @router.post("/lectures/{lecture_id}/ask", response_model=AskOut)
 def ask(lecture_id: UUID, body: AskIn, user: dict = Depends(require_user)) -> dict:
     with connection() as conn:
-        _readable_lecture(conn, user, lecture_id)
-        ai.guard(conn, user["id"])
-        excerpts = retrieve(conn, lecture_id, body.question)
+        _ready(_readable_lecture(conn, user, lecture_id))
         llm = ai.get_llm()
+        if llm is not None:  # quoting the lecture back costs nothing, so it isn't limited
+            ai.guard(conn, user["id"])
+        excerpts = retrieve(conn, lecture_id, body.question)
         answer = None
         if llm is not None and excerpts:
             try:
@@ -273,7 +286,8 @@ def ask(lecture_id: UUID, body: AskIn, user: dict = Depends(require_user)) -> di
                 answer = None
         if answer is None:
             answer = asking.extractive(body.question, excerpts)
-        ai.record(conn, user["id"], "ask", answer.tokens)
+        if answer.mode != "extractive" or answer.tokens:
+            ai.record(conn, user["id"], "ask", answer.tokens)
     cited = {c for s in answer.sentences for c in s["cites"]}
     return {
         "covered": answer.covered,

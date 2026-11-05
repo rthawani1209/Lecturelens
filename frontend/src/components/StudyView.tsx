@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   ApiError,
@@ -45,9 +45,11 @@ export function StudyView() {
   const [loadingDeck, setLoadingDeck] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const courseId = courseParam ?? courses[0]?.id ?? null;
+  // a link to one lecture ("Study this lecture") opens that lecture's course
+  const courseId = courseParam ?? deck?.course_id ?? (lectureParam ? null : courses[0]?.id) ?? null;
   const course = courses.find((c) => c.id === courseId);
 
+  const main = useRef<HTMLElement>(null);
   const go = useCallback(
     (next: { course?: string; lecture?: string | null }) => {
       const p = new URLSearchParams(params.toString());
@@ -55,6 +57,10 @@ export function StudyView() {
       if (next.lecture === null) p.delete("lecture");
       else if (next.lecture) p.set("lecture", next.lecture);
       router.replace(`/study?${p}`, { scroll: false });
+      // on a phone the deck list sits above the card, so bring the card up
+      if (next.lecture && window.matchMedia("(max-width: 959px)").matches) {
+        main.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     },
     [params, router],
   );
@@ -174,7 +180,10 @@ export function StudyView() {
             Cards are written from the lecture itself and link back to the second each idea was
             taught. Sign in so we can remember what you&apos;ve learned.
           </p>
-          <Link className={styles.primary} href="/signin?next=/study">
+          <Link
+            className={styles.primary}
+            href={`/signin?next=${encodeURIComponent(`/study?${params}`)}`}
+          >
             Sign in
           </Link>
         </section>
@@ -233,7 +242,7 @@ export function StudyView() {
         </div>
       </aside>
 
-      <section className={styles.main} aria-label="Card">
+      <section className={styles.main} aria-label="Card" ref={main}>
         {error && (
           <p className={styles.error} role="alert">
             {error}

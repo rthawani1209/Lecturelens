@@ -72,6 +72,7 @@ def test_cloze_cards_without_an_api_key(client, course):
     cid, lid = course
     deck = client.post(f"/lectures/{lid}/deck").json()
     assert deck["mode"] == "cloze" and deck["total"] >= 3 and deck["due"] == deck["total"]
+    assert deck["course_id"] == str(cid)
     for card in deck["cards"]:
         assert "_____" in card["front"]
         assert card["back"].lower() not in card["front"].lower()
@@ -224,14 +225,20 @@ def test_all_uncited_means_not_covered(client, course, llm):
     assert r["covered"] is False and r["sentences"] == []
 
 
-def test_ai_limits(client, course, db, monkeypatch):
+def test_ai_limits(client, course, db, llm, monkeypatch):
     from lecturelens.config import get_settings
 
     _, lid = course
+    q = {"question": "dijkstra heap"}
+    # quoting the lecture back (no model) is free and never limited
+    for _ in range(4):
+        assert client.post(f"/lectures/{lid}/ask", json=q).status_code == 200
+    assert db.execute("SELECT count(*) FROM ai_calls").fetchone()[0] == 0
+
+    llm({"covered": True, "sentences": [{"text": "Dijkstra uses a heap.", "cites": [1]}]})
     monkeypatch.setenv("AI_PER_MINUTE", "2")
     get_settings.cache_clear()
     try:
-        q = {"question": "dijkstra heap"}
         assert client.post(f"/lectures/{lid}/ask", json=q).status_code == 200
         assert client.post(f"/lectures/{lid}/ask", json=q).status_code == 200
         r = client.post(f"/lectures/{lid}/ask", json=q)
@@ -243,3 +250,14 @@ def test_ai_limits(client, course, db, monkeypatch):
         assert r.status_code == 429 and "month" in r.json()["detail"]
     finally:
         get_settings.cache_clear()
+
+
+def test_study_waits_for_a_finished_lecture(client, course, db):
+    _, lid = course
+    q = {"question": "dijkstra heap"}
+    db.execute("UPDATE lectures SET status = 'processing' WHERE id = %s", (lid,))
+    r = client.post(f"/lectures/{lid}/ask", json=q)
+    assert r.status_code == 409 and "still processing" in r.json()["detail"]
+    db.execute("UPDATE lectures SET status = 'failed' WHERE id = %s", (lid,))
+    r = client.post(f"/lectures/{lid}/deck")
+    assert r.status_code == 409 and "didn't finish" in r.json()["detail"]

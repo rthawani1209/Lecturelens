@@ -1,0 +1,16 @@
+{"id": "py01", "query": "difference between knowing a fact and knowing a recipe to compute it", "split": "test", "labels": [{"lecture": 1, "start": 299, "end": 600, "rel": 3}]}
+{"id": "py02", "query": "computers before the 1940s could only run one built in program", "split": "test", "labels": [{"lecture": 1, "start": 598, "end": 760, "rel": 3}]}
+{"id": "py03", "query": "kinds of mistakes a program can have syntax versus meaning", "split": "test", "labels": [{"lecture": 1, "start": 1108, "end": 1240, "rel": 3}]}
+{"id": "py04", "query": "basic number types in python ints floats and booleans", "split": "test", "labels": [{"lecture": 1, "start": 1467, "end": 1680, "rel": 3}]}
+{"id": "py05", "query": "turning a float into an int", "split": "test", "labels": [{"lecture": 1, "start": 1690, "end": 1800, "rel": 3}, {"lecture": 2, "start": 604, "end": 734, "rel": 2}]}
+{"id": "py06", "query": "a variable in python is not the same as a variable in math", "split": "test", "labels": [{"lecture": 1, "start": 2504, "end": 2660, "rel": 3}]}
+{"id": "py07", "query": "multiplying a string by a number that is still a string gives a type error", "split": "test", "labels": [{"lecture": 2, "start": 604, "end": 740, "rel": 3}]}
+{"id": "py08", "query": "getting one character out of a string with square brackets", "split": "test", "labels": [{"lecture": 2, "start": 784, "end": 1040, "rel": 3}]}
+{"id": "py09", "query": "taking a substring with start stop and step", "split": "test", "labels": [{"lecture": 2, "start": 1011, "end": 1300, "rel": 3}]}
+{"id": "py10", "query": "printing a mix of text and variables with an f string", "split": "test", "labels": [{"lecture": 2, "start": 2841, "end": 3060, "rel": 3}]}
+{"id": "py11", "query": "how python knows which lines belong to the if", "split": "test", "labels": [{"lecture": 2, "start": 3783, "end": 3900, "rel": 3}]}
+{"id": "py12", "query": "checking several conditions in a row with elif", "split": "test", "labels": [{"lecture": 2, "start": 3896, "end": 4346, "rel": 3}, {"lecture": 3, "start": 166, "end": 260, "rel": 2}]}
+{"id": "py13", "query": "lost in the woods game keep asking which way until they leave", "split": "test", "labels": [{"lecture": 3, "start": 405, "end": 800, "rel": 3}]}
+{"id": "py14", "query": "a loop that never stops running", "split": "test", "labels": [{"lecture": 3, "start": 599, "end": 680, "rel": 3}]}
+{"id": "py15", "query": "computing four factorial with a loop", "split": "test", "labels": [{"lecture": 3, "start": 1516, "end": 1800, "rel": 3}]}
+{"id": "py16", "query": "what numbers does range five give you", "split": "test", "labels": [{"lecture": 3, "start": 1951, "end": 2150, "rel": 3}]}

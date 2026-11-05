@@ -1,4 +1,8 @@
-"""Measure search quality on the hand-labeled 6.006 questions.
+"""Measure search quality on hand-labeled questions.
+
+6.006 is the main set (val + test). 6.100L and 18.06 are small extra sets, all test,
+that were never used for tuning: they check the choices made on 6.006 carry over
+to a programming course and a chalkboard math course.
 
 Each label is a time range in a lecture ("Dijkstra's correctness proof is at
 39:57-46:16 in lecture 13"). A result counts as relevant if the second it jumps
@@ -6,6 +10,7 @@ to lands inside a labeled range (with 15 s of slack either side). Ranges, not
 segment ids, so the labels survive re-chunking or re-transcribing.
 
   python ml/eval/evaluate.py --split test --out ml/eval/results.json
+  python ml/eval/evaluate.py --course 18.06 --out ml/eval/results_18.06.json
 """
 
 import argparse
@@ -27,8 +32,13 @@ HERE = Path(__file__).parent
 SLACK_S = 15.0
 
 
-def load_queries(split: str | None) -> list[dict]:
-    rows = [json.loads(line) for line in (HERE / "queries.jsonl").read_text().splitlines() if line]
+def queries_file(course: str) -> Path:
+    return HERE / ("queries.jsonl" if course == "6.006" else f"queries_{course}.jsonl")
+
+
+def load_queries(split: str | None, course: str = "6.006") -> list[dict]:
+    text = queries_file(course).read_text()
+    rows = [json.loads(line) for line in text.splitlines() if line]
     return [r for r in rows if split in (None, "all", r["split"])]
 
 
@@ -36,7 +46,7 @@ def course_and_lectures(code: str = "6.006") -> tuple[str, dict]:
     with connection() as conn:
         cid = conn.execute("SELECT id FROM courses WHERE code = %s AND public", (code,)).fetchone()
         if cid is None:
-            sys.exit("demo course not loaded; run scripts/seed_demo.py first")
+            sys.exit(f"{code} not loaded; run scripts/seed_demo.py data/ocw/{code} first")
         lecs = conn.execute(
             "SELECT id, position FROM lectures WHERE course_id = %s", (cid["id"],)
         ).fetchall()
@@ -67,8 +77,8 @@ RERANKED = {"hybrid+lr": ("hybrid", "lr"), "hybrid+reranker": ("hybrid", "mlp")}
 DAY3_WEIGHTS = {"keyword": 1.0, "meaning": 1.0, "ocr": 0.8, "visual": 0.6}
 
 
-def run(methods: list[str], queries: list[dict], limit: int = 10) -> dict:
-    course, positions = course_and_lectures()
+def run(methods: list[str], queries: list[dict], limit: int = 10, code: str = "6.006") -> dict:
+    course, positions = course_and_lectures(code)
     results = {}
     for method in methods:
         runs, qrels, latencies = {}, {}, []
@@ -117,11 +127,12 @@ def main() -> None:
             "hybrid+reranker",
         ],
     )
+    ap.add_argument("--course", default="6.006", choices=["6.006", "6.100L", "18.06"])
     ap.add_argument("--out", type=Path)
     args = ap.parse_args()
-    queries = load_queries(args.split)
-    results = run(args.methods, queries)
-    print(f"{len(queries)} queries ({args.split})\n")
+    queries = load_queries(args.split, args.course)
+    results = run(args.methods, queries, code=args.course)
+    print(f"{args.course}: {len(queries)} queries ({args.split})\n")
     print(table(results))
     if args.out:
         meta = {
@@ -131,7 +142,14 @@ def main() -> None:
         }
         args.out.write_text(
             json.dumps(
-                {"split": args.split, "n": len(queries), **meta, "results": results}, indent=2
+                {
+                    "course": args.course,
+                    "split": args.split,
+                    "n": len(queries),
+                    **meta,
+                    "results": results,
+                },
+                indent=2,
             )
             + "\n"
         )

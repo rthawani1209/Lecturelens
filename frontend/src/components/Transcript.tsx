@@ -36,7 +36,10 @@ export function Transcript({
     if (!follow || find) return;
     const box = list.current;
     const el = box?.querySelector<HTMLElement>(`[data-line="${active}"]`);
-    if (box && el) box.scrollTop = el.offsetTop - box.offsetTop - box.clientHeight / 3;
+    if (!box || !el) return;
+    // measured on screen, so it doesn't matter which element offsetTop counts from
+    const y = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+    box.scrollTop = y - box.clientHeight / 3;
   }, [active, follow, find]);
 
   return (
@@ -64,7 +67,11 @@ export function Transcript({
         {find && <span className="mono">{shown.length}</span>}
       </label>
       <ol className={styles.lines} ref={list} onWheel={() => setFollow(false)}>
-        {shown.length === 0 && <li className={styles.none}>Not said in this lecture.</li>}
+        {shown.length === 0 && (
+          <li className={styles.none}>
+            {lines.length ? "Not said in this lecture." : "No one speaks in this video."}
+          </li>
+        )}
         {shown.map((l) => (
           <li key={l.i}>
             <button

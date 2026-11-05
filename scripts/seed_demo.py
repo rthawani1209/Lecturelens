@@ -1,8 +1,9 @@
-"""Load an OCW course folder (from fetch_ocw.py / the ocw-6.006-s20 release) as a public
+"""Load an OCW course folder (from fetch_ocw.py / the ocw-* releases) as a public
 course and run every lecture through the pipeline.
 
   python scripts/seed_demo.py data/ocw/6.006            # process in this process
   python scripts/seed_demo.py data/ocw/6.006 --queue    # hand lectures to Celery workers
+  python scripts/seed_demo.py data/ocw/18.06            # same for the other courses
 
 Safe to rerun: existing lectures are matched by title and finished stages are skipped.
 """
@@ -58,24 +59,80 @@ TERMS_6006 = [
     "log n",
 ]
 
+TERMS_6100L = [
+    "Python",
+    "Ana Bell",
+    "int",
+    "float",
+    "boolean",
+    "string",
+    "tuple",
+    "dictionary",
+    "for loop",
+    "while loop",
+    "bisection search",
+    "guess and check",
+    "approximation",
+    "epsilon",
+    "indexing",
+    "slicing",
+    "immutable",
+    "iteration",
+]
 
-def ensure_course(manifest: dict) -> str:
+TERMS_1806 = [
+    "Strang",
+    "matrix",
+    "matrices",
+    "elimination",
+    "pivot",
+    "row picture",
+    "column picture",
+    "linear combination",
+    "Gauss-Jordan",
+    "inverse",
+    "invertible",
+    "singular",
+    "upper triangular",
+    "permutation",
+    "LU",
+    "transpose",
+]
+
+# folder name -> (code, title, term, spelling hints)
+COURSES = {
+    "6.006": ("6.006", "Introduction to Algorithms", "Spring 2020", TERMS_6006),
+    "6.100L": (
+        "6.100L",
+        "Introduction to CS and Programming using Python",
+        "Fall 2022",
+        TERMS_6100L,
+    ),
+    "18.06": ("18.06", "Linear Algebra", "Spring 2010", TERMS_1806),
+}
+
+
+def ensure_course(folder: Path, manifest: dict) -> str:
+    code, title, term, terms = COURSES[folder.name]
     with connection() as conn:
-        row = conn.execute("SELECT id FROM courses WHERE code = '6.006' AND public").fetchone()
+        row = conn.execute("SELECT id FROM courses WHERE code = %s AND public", (code,)).fetchone()
         if row:
             return row["id"]
-        gid = conn.execute(
-            "INSERT INTO groups (name) VALUES ('MIT OpenCourseWare') RETURNING id"
-        ).fetchone()["id"]
+        gid = (
+            conn.execute("SELECT id FROM groups WHERE name = 'MIT OpenCourseWare'").fetchone()
+            or conn.execute(
+                "INSERT INTO groups (name) VALUES ('MIT OpenCourseWare') RETURNING id"
+            ).fetchone()
+        )
         cid = conn.execute(
             """INSERT INTO courses (group_id, code, title, term, public, license)
-               VALUES (%s, '6.006', 'Introduction to Algorithms', 'Spring 2020', true, %s)
+               VALUES (%s, %s, %s, %s, true, %s)
                RETURNING id""",
-            (gid, f"{manifest['license']} · {manifest['attribution']}"),
+            (gid["id"], code, title, term, f"{manifest['license']} · {manifest['attribution']}"),
         ).fetchone()["id"]
         conn.execute(
             "INSERT INTO course_terms (course_id, term) SELECT %s, unnest(%s::text[])",
-            (cid, TERMS_6006),
+            (cid, terms),
         )
         return cid
 
@@ -89,7 +146,7 @@ def ensure_lecture(course_id: str, folder: Path, lec: dict) -> str:
         ).fetchone()
         if row:
             return row["id"]
-        key = f"ocw/6.006/{lec['video']}"
+        key = f"ocw/{folder.name}/{lec['video']}"
         get_storage().put_file(key, folder / lec["video"])
         return conn.execute(
             """INSERT INTO lectures
@@ -109,7 +166,7 @@ def main() -> None:
 
     migrate()
     manifest = json.loads((args.folder / "manifest.json").read_text())
-    course_id = ensure_course(manifest)
+    course_id = ensure_course(args.folder, manifest)
     for lec in manifest["lectures"]:
         if args.only and lec["number"] not in args.only:
             continue

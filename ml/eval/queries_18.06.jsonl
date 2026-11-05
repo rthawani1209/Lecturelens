@@ -1,0 +1,15 @@
+{"id": "la01", "query": "what do two equations look like as lines crossing", "split": "test", "labels": [{"lecture": 1, "start": 86, "end": 550, "rel": 3}]}
+{"id": "la02", "query": "solving a system by adding up the columns in the right amounts", "split": "test", "labels": [{"lecture": 1, "start": 504, "end": 800, "rel": 3}, {"lecture": 1, "start": 1303, "end": 1780, "rel": 2}]}
+{"id": "la03", "query": "three equations in three unknowns as planes meeting at a point", "split": "test", "labels": [{"lecture": 1, "start": 941, "end": 1363, "rel": 3}]}
+{"id": "la04", "query": "when can't we reach every right hand side b", "split": "test", "labels": [{"lecture": 1, "start": 1778, "end": 2060, "rel": 3}]}
+{"id": "la05", "query": "multiply a matrix by a vector one row at a time with dot products", "split": "test", "labels": [{"lecture": 1, "start": 2237, "end": 2330, "rel": 3}]}
+{"id": "la06", "query": "what number do we divide by when eliminating the first unknown", "split": "test", "labels": [{"lecture": 2, "start": 229, "end": 503, "rel": 3}]}
+{"id": "la07", "query": "what happens when a zero shows up where we need to divide", "split": "test", "labels": [{"lecture": 2, "start": 621, "end": 911, "rel": 3}]}
+{"id": "la08", "query": "solving the triangular system from the bottom up", "split": "test", "labels": [{"lecture": 2, "start": 868, "end": 1000, "rel": 3}]}
+{"id": "la09", "query": "the matrix that swaps two rows", "split": "test", "labels": [{"lecture": 2, "start": 2182, "end": 2400, "rel": 3}]}
+{"id": "la10", "query": "why you can move the parentheses when multiplying the elimination matrices", "split": "test", "labels": [{"lecture": 2, "start": 2024, "end": 2194, "rel": 3}]}
+{"id": "la11", "query": "undoing a subtract three times row one step", "split": "test", "labels": [{"lecture": 2, "start": 2641, "end": 2800, "rel": 3}]}
+{"id": "la12", "query": "matrix product as a sum of column times row pieces", "split": "test", "labels": [{"lecture": 3, "start": 695, "end": 1060, "rel": 3}]}
+{"id": "la13", "query": "multiplying big matrices by cutting them into blocks", "split": "test", "labels": [{"lecture": 3, "start": 1082, "end": 1260, "rel": 3}]}
+{"id": "la14", "query": "why the matrix 1 3 2 6 has no inverse", "split": "test", "labels": [{"lecture": 3, "start": 1460, "end": 1800, "rel": 3}]}
+{"id": "la15", "query": "computing an inverse by row reducing A next to the identity", "split": "test", "labels": [{"lecture": 3, "start": 2118, "end": 2600, "rel": 3}]}

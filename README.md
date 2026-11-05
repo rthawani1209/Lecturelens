@@ -4,40 +4,80 @@
 
 Search your recorded lectures and jump to the exact second something was explained, whether it was said out loud or only written on a slide or whiteboard. Then ask questions about the lectures and study from flashcards built from what the professor actually said.
 
-> Work in progress. The demo video, live link and results table land here once the pipeline and models are trained.
+## Results
+
+All numbers come from committed results files and are listed with the command that
+reproduces them in [docs/CLAIMS.md](docs/CLAIMS.md).
+
+| What | Number | Where it comes from |
+|---|---|---|
+| Search quality, MIT 6.006 held-out test questions (38) | NDCG@10 **0.786**, right moment in the top 5 for **85.5%** | `ml/eval/results_test.json` (default: meaning search) |
+| Same default on courses never used for tuning | NDCG@10 0.834 on 18.06, 0.775 on 6.100L | `ml/eval/results_18.06.json`, `results_6.100L.json` |
+| Keras re-ranker on top of hybrid search | recall@5 81.6% → **88.2%** (NDCG flat) | `ml/eval/results_test.json` |
+| Frame tagger (MobileNetV3, TF Serving) on hand-checked frames | **82.4%** vs 67.1% for CLIP zero-shot, 7.7x faster on CPU | `ml/tagger/results.json` |
+| Search latency, meaning search on a 4-CPU Linux box | p50 21 ms | `ml/eval/results_test.json` |
+
+The honest part: plain meaning search beat the fused and re-ranked versions on 6.006,
+so it's the default, and a CI gate keeps it that way. The write-up is in
+[docs/INTERVIEW.md](docs/INTERVIEW.md).
+
+## What you can do
+
+- **Search** a course by meaning or keyword. Each result jumps the video to the second
+  it was said or shown, with filters for slides, code, whiteboard, diagrams or the
+  professor.
+- **Watch** with a synced transcript, a strip of every board and slide, J/K/L and speed
+  keys, captions, and private notes pinned to timestamps.
+- **Upload** a video (resumable, survives a dropped connection) or import from YouTube,
+  then watch the pipeline run live. Failed lectures can be retried or deleted.
+- **Study** with flashcards for each lecture (spaced repetition), and ask questions.
+  Every sentence of an answer cites the second it came from, and it says "not covered"
+  instead of guessing.
 
 ## How it works
 
-1. **Process.** A Python pipeline turns each lecture into timestamped sentences (faster-whisper) and a snapshot of every new slide or board (ffmpeg scene detection + OCR).
-2. **Understand.** Sentences and snapshots become vectors that capture meaning (a sentence embedder for text, CLIP for images), stored in Postgres with pgvector.
-3. **Two models trained in TensorFlow.** A MobileNetV3 frame tagger (slide / code / whiteboard / professor) distilled from CLIP, and a re-ranker trained with a pairwise ranking loss.
-4. **Search.** Keyword search and meaning search run together, get merged with reciprocal rank fusion, then re-ranked. Every result links to the second it came from.
-5. **Study.** Grounded answers with timestamp citations, flashcards with spaced repetition, and quizzes.
+1. **Process.** A Celery worker turns each lecture into timestamped sentences
+   (faster-whisper, with course vocabulary for terms like "Dijkstra") and a snapshot of
+   every new slide or board (ffmpeg scene detection, near-duplicate removal, OCR).
+2. **Understand.** Sentences and snapshots become vectors (MiniLM for text, CLIP for
+   images) stored in Postgres with pgvector.
+3. **Two TensorFlow models.** A MobileNetV3 frame tagger distilled from CLIP, and a
+   re-ranker trained with a pairwise ranking loss. TF Serving serves both.
+4. **Search.** Keyword (Postgres full-text), meaning, slide text and image search,
+   merged with reciprocal rank fusion. Meaning search is the default.
+5. **Study.** Claude writes cards and cited answers when an API key is set. Without one,
+   it falls back to fill-in-the-blank cards and quoted passages, with per-user AI limits.
+
+More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Repo layout
 
 ```
 backend/            Python API (FastAPI) and pipeline workers
   lecturelens/
-    api/            HTTP routes: auth, courses, lectures + uploads, search, media
+    api/            HTTP routes: auth, courses, lectures, uploads, search, watch, study, media
     db/             connection pool + migration runner
-    pipeline/       processing stages: fetch, probe, audio, transcribe, keyframes, OCR, embed
-    search/         hybrid search engine, NumPy fusion (RRF), ranking metrics
+    pipeline/       processing stages: fetch, probe, audio, transcribe, frames, OCR, embed, tag
+    search/         hybrid search engine, NumPy fusion (RRF), metrics, re-ranker
+    study/          flashcards (Claude or cloze), spaced repetition, cited answers
     access.py       who can read or change each course and lecture
-    tagger.py       frame tags from TF Serving (or the CLIP probe fallback)
+    ai.py           Claude client and per-user limits
     auth.py         email-link and Google sign-in, sessions
     worker.py       Celery worker that runs the pipeline
   migrations/       SQL schema, applied in order
-  tests/            unit + Postgres tests; fixtures/ builds a synthetic lecture
+  tests/            pytest; fixtures/ builds a synthetic lecture with a synthetic voice
+frontend/           Next.js web app
+  src/              screens and components
+  e2e/              Playwright tests against the real stack
 ml/                 training and evaluation (separate venv: ml/requirements.txt)
-  eval/             hand-labeled search queries and the search quality script
-  tagger/           CLIP-teacher labels + MobileNetV3 frame tagger in TensorFlow
-frontend/           Next.js web app (coming)
-infra/              Google Cloud deploy (coming)
-scripts/            model export, MIT OCW downloader, get_models.sh, check.sh (same lint + tests as CI)
-docs/               ARCHITECTURE, DECISIONS, INTERVIEW, EXERCISE (coming)
+  eval/             hand-labeled questions for three MIT courses + the evaluation script
+  rerank/           re-ranker dataset, training and the CI gate
+  tagger/           CLIP-teacher labels + MobileNetV3 frame tagger
+  serving/          TF Serving config
+scripts/            check.sh (same lint + tests as CI), e2e.sh, OCW downloader, demo seeding
+docs/               ARCHITECTURE, CLAIMS, INTERVIEW
 models/             pretrained models (downloaded, not committed)
-docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, TF Serving, API, worker
+docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, TF Serving, API, worker, web
 ```
 
 ## Run it locally
@@ -47,17 +87,22 @@ Needs Docker. No cloud accounts.
 ```bash
 ./scripts/get_models.sh        # ~800 MB: whisper, MiniLM, CLIP + the frame tagger (from this repo's releases)
 docker compose up --build
-curl localhost:8000/health
+open http://localhost:3000
 ```
 
-Backend tests (needs Postgres with pgvector; DB tests are skipped without it):
+Load a demo course. The lectures are mirrored in this repo's releases (`ocw-6.006-s20`,
+`ocw-6.100l`, `ocw-18.06`); download one into `data/ocw/<course>/`, then:
 
 ```bash
-cd backend
-pip install -e '.[dev]'
-pytest
+python scripts/seed_demo.py data/ocw/6.006 --queue
+```
+
+Everything CI runs (lint, backend and model tests, frontend checks, browser tests):
+
+```bash
+TEST_DATABASE_URL=postgresql://lecturelens:lecturelens@localhost:5432/lecturelens_test scripts/check.sh
 ```
 
 ## Data
 
-The demo course is [MIT 6.006 Introduction to Algorithms (Spring 2020)](https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-spring-2020/) from MIT OpenCourseWare, used under CC BY-NC-SA 4.0.
+The demo course is [MIT 6.006 Introduction to Algorithms (Spring 2020)](https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-spring-2020/) from MIT OpenCourseWare. The extra evaluation uses lectures 1-3 of [6.100L (Fall 2022)](https://ocw.mit.edu/courses/6-100l-introduction-to-cs-and-programming-using-python-fall-2022/) and [18.06 (Spring 2010)](https://ocw.mit.edu/courses/18-06-linear-algebra-spring-2010/). All are used under CC BY-NC-SA 4.0.

@@ -23,6 +23,7 @@ TYPES = {
     ".mp4": "video/mp4",
     ".webm": "video/webm",
     ".mov": "video/quicktime",
+    ".m4v": "video/mp4",
 }
 
 

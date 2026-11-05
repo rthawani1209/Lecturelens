@@ -1,3 +1,4 @@
+import re
 import shutil
 
 import pytest
@@ -61,3 +62,30 @@ def test_ocr_timeout_skips_the_frame(monkeypatch, tmp_path):
 
     monkeypatch.setattr(subprocess, "run", slow)
     assert ocr(tmp_path / "frame.jpg") == ""
+
+
+@pytest.mark.skipif(not shutil.which("tesseract"), reason="needs tesseract")
+@pytest.mark.parametrize("bg,fg", [("#1E1E1E", "#D4D4D4"), ("#FFFFFF", "#24292E")])
+def test_ocr_reads_a_screen_recording_of_code(bg, fg, tmp_path):
+    import inspect
+    import textwrap
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    # 18 px code in an editor on a 1080p screen, scaled to 1280 wide like every frame
+    code = textwrap.dedent(inspect.getsource(dedupe)).splitlines()
+    try:
+        font = ImageFont.truetype("DejaVuSansMono.ttf", 18)
+    except OSError:
+        pytest.skip("needs the DejaVu fonts")
+    img = Image.new("RGB", (1920, 1080), bg)
+    draw = ImageDraw.Draw(img)
+    for i, line in enumerate(code):
+        draw.text((60, 40 + i * 26), line, fill=fg, font=font)
+    path = tmp_path / "code.jpg"
+    img.resize((1280, 720)).save(path, quality=80)
+
+    # the names in the code are what people search for; brackets and commas matter less
+    names = set(re.findall(r"[A-Za-z_]{3,}", "\n".join(code)))
+    read = set(re.findall(r"[A-Za-z_]{3,}", ocr(path)))
+    assert len(names & read) / len(names) > 0.9, names - read

@@ -9,7 +9,7 @@ import logging
 import tempfile
 import traceback
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import UUID
 
 import httpx
@@ -22,7 +22,15 @@ from . import jobs
 from .chunk import Sentence, windows
 from .dedup import dedupe, dhash, signature, to_signed
 from .fetch import download_youtube
-from .media import MediaError, extract_audio, keyframes, probe
+from .media import (
+    BROWSER_CONTAINERS,
+    MediaError,
+    browser_container,
+    extract_audio,
+    keyframes,
+    probe,
+    remux,
+)
 from .ocr import ocr
 from .transcribe import transcribe
 
@@ -72,9 +80,30 @@ def stage_fetch(lecture_id: UUID, work: Path, report: Progress) -> None:
 
 
 def stage_probe(lecture_id: UUID, work: Path, report: Progress) -> None:
-    info = probe(_video(_lecture(lecture_id), work))
-    if not (info["has_video"] and info["has_audio"]):
-        raise MediaError("file needs both a video and an audio track")
+    lecture = _lecture(lecture_id)
+    video = _video(lecture, work)
+    info = probe(video)
+    if not info["has_video"]:
+        raise MediaError("file has no video track")
+    # no audio is fine (a silent screen recording): search and study use the slides
+    old_key = lecture["storage_key"]
+    ext = PurePosixPath(old_key).suffix.lower()
+    if ext not in BROWSER_CONTAINERS:
+        target = browser_container(info)
+        if target is None:
+            raise MediaError(
+                f"browsers can't play {info['video_codec']} video; convert it to MP4 (H.264)"
+            )
+        # so the player can show it; the original goes once the copy is stored
+        new_ext, audio_to_aac = target
+        new_key = _key(lecture_id, f"source{new_ext}")
+        remuxed = remux(video, work / f"remuxed{new_ext}", audio_to_aac)
+        get_storage().put_file(new_key, remuxed)
+        with connection() as conn:
+            conn.execute(
+                "UPDATE lectures SET storage_key = %s WHERE id = %s", (new_key, lecture_id)
+            )
+        get_storage().delete_prefix(old_key)
     with connection() as conn:
         conn.execute(
             "UPDATE lectures SET duration_s = %s WHERE id = %s", (info["duration_s"], lecture_id)
@@ -82,12 +111,18 @@ def stage_probe(lecture_id: UUID, work: Path, report: Progress) -> None:
 
 
 def stage_audio(lecture_id: UUID, work: Path, report: Progress) -> None:
-    wav = extract_audio(_video(_lecture(lecture_id), work), work / "audio.wav")
+    video = _video(_lecture(lecture_id), work)
+    if not probe(video)["has_audio"]:
+        return
+    wav = extract_audio(video, work / "audio.wav")
     get_storage().put_file(_key(lecture_id, "audio.wav"), wav)
 
 
 def stage_transcribe(lecture_id: UUID, work: Path, report: Progress) -> None:
     lecture = _lecture(lecture_id)
+    if not get_storage().exists(_key(lecture_id, "audio.wav")):
+        save_transcript(lecture_id, [])  # silent video
+        return
     wav = get_storage().get_file(_key(lecture_id, "audio.wav"), work / "audio.wav")
     with connection() as conn:
         terms = [
@@ -164,6 +199,8 @@ def stage_embed_text(lecture_id: UUID, work: Path, report: Progress) -> None:
         lines = conn.execute(
             "SELECT id, text FROM transcript_lines WHERE lecture_id = %s", (lecture_id,)
         ).fetchall()
+    if not lines:
+        return
     emb = text_embedder()
     seg_vecs = emb.embed([s["text"] for s in segs])
     report(0.5)

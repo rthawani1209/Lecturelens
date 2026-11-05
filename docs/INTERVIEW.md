@@ -28,6 +28,19 @@ questions, not a bigger model. And on a lecture course that is mostly chalkboard
 speech, slide text and images just don't add much; hybrid stays available for
 slide-heavy courses.
 
+## Search: "Does it work on other courses?"
+
+I labeled 15-16 questions on three lectures each of two courses I never tuned on: MIT
+6.100L (intro Python, slide-heavy) and 18.06 (Strang's linear algebra, all
+chalkboard). The default, meaning search, held up: 0.834 NDCG@10 on 18.06, the best of
+every method, and 0.775 on 6.100L. The Python course is where it lost: the best there
+was hybrid search with my original day 3 weights (0.848), which count the text on the
+slides, and keyword plus meaning was close (0.836). Tuning on chalkboard-heavy 6.006
+had set the slide text weight to zero, so those tuned weights didn't carry over to a
+slide course (0.786). That's a fair warning about tuning on one course, and a reason
+to keep hybrid as an option. The sets are small, so I treat them as a sanity check, not a headline
+number.
+
 ## Search: "Did the re-ranker help?"
 
 Only on recall. With it, the right moment shows up in the top 5 for 88.2% of test

@@ -126,16 +126,40 @@ def test_crash_mid_pipeline_resumes_without_redoing_work(
     assert db.execute("SELECT status FROM lectures WHERE id = %s", (lid,)).fetchone()[0] == "ready"
 
 
-def test_rejects_file_without_audio(db, lecture, storage, tmp_path):
+def test_silent_video_is_searchable_by_its_slides(
+    db, lecture, lecture_fixture, storage, models_env, tmp_path
+):
+    import subprocess
+
+    lid, truth = lecture
+    video, _ = lecture_fixture
+    silent = tmp_path / "silent.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(video), "-an", "-c:v", "copy", str(silent)],
+        check=True,
+    )
+    storage.put_file("uploads/x.mp4", silent)
+    stages.run_pipeline(lid)
+
+    assert db.execute("SELECT status FROM lectures WHERE id = %s", (lid,)).fetchone()[0] == "ready"
+    assert _count(db, "transcript_lines", lid) == 0
+    assert _count(db, "frames", lid) == len(truth["slides"])
+    ocr = " ".join(
+        r[0] for r in db.execute("SELECT ocr_text FROM frames WHERE lecture_id = %s", (lid,))
+    )
+    assert "Graph Search" in ocr
+
+
+def test_rejects_file_without_video(db, lecture, storage, tmp_path):
     import subprocess
 
     lid, _ = lecture
-    silent = tmp_path / "silent.mp4"
+    audio = tmp_path / "audio.mp4"
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=d=2", str(silent)], check=True
+        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=d=2", str(audio)], check=True
     )
-    storage.put_file("uploads/x.mp4", silent)
-    with pytest.raises(Exception, match="audio"):
+    storage.put_file("uploads/x.mp4", audio)
+    with pytest.raises(Exception, match="no video track"):
         stages.run_stage(lid, "probe")
 
 

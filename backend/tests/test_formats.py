@@ -46,7 +46,13 @@ def test_format_goes_through_the_pipeline(
     lid, truth = lecture
     ext, pre, post = VARIANTS[name]
     video = tmp_path / f"in{ext}"
-    _ffmpeg(*pre, "-i", lecture_fixture[0], *post, video)
+    try:
+        _ffmpeg(*pre, "-i", lecture_fixture[0], *post, video)
+    except subprocess.CalledProcessError:
+        if name != "rotated by metadata":
+            raise
+        # ffmpeg before 6.0 has no -display_rotation; it writes the old rotate tag
+        _ffmpeg("-i", lecture_fixture[0], "-c", "copy", "-metadata:s:v:0", "rotate=90", video)
     key = f"lectures/{lid}/source{ext}"
     storage.put_file(key, video)
     db.execute("UPDATE lectures SET storage_key = %s WHERE id = %s", (key, lid))

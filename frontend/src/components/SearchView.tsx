@@ -32,10 +32,11 @@ function isTag(t: string | null): t is Tag {
 export function SearchView({ courses }: { courses: Course[] }) {
   const router = useRouter();
   const params = useSearchParams();
-  const q = params.get("q") ?? "";
+  const q = (params.get("q") ?? "").slice(0, 300); // the API takes at most 300
   const mode: Mode = isMode(params.get("mode")) ? (params.get("mode") as Mode) : "meaning";
   const tag: Tag | "all" = isTag(params.get("tag")) ? (params.get("tag") as Tag) : "all";
-  const courseId = params.get("course") ?? courses[0]?.id ?? "";
+  // no course in the URL means every course this person can see
+  const courseId = params.get("course") ?? "";
   const course = courses.find((c) => c.id === courseId);
 
   const [state, setState] = useState<State>({ kind: "idle" });
@@ -117,6 +118,7 @@ export function SearchView({ courses }: { courses: Course[] }) {
           <label className={styles.course}>
             <span className="sr-only">Course</span>
             <select value={courseId} onChange={(e) => go({ course: e.target.value })}>
+              <option value="">All courses</option>
               {courses.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.code} · {c.title}

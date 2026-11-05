@@ -174,6 +174,7 @@ export const api = {
   me: () => get<{ user: Me | null }>("/auth/session", { cache: "no-store" }).then((s) => s.user),
   emailLink: (email: string) => send<void>("POST", "/auth/email", { email }),
   verify: (token: string) => send<Me>("POST", "/auth/email/verify", { token }),
+  demo: () => send<Me>("POST", "/auth/demo"),
   logout: () => send<void>("POST", "/auth/logout"),
   watch: (id: string) => get<WatchData>(`/lectures/${id}/watch`, { cache: "no-store" }),
   notes: (id: string) => get<Note[]>(`/lectures/${id}/notes`, { cache: "no-store" }),

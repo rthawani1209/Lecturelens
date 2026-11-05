@@ -16,6 +16,8 @@ web_port="${E2E_WEB_PORT:-3300}"
 run="$(mktemp -d)"
 export STORAGE_BACKEND=local LOCAL_STORAGE_DIR="$run/storage" UPLOAD_DIR="$run/uploads"
 export MODELS_DIR="$root/models" APP_URL="http://localhost:$web_port"
+# the public demo sign-in button (off by default)
+export DEMO_LOGIN=1
 export API_URL="http://localhost:$api_port"
 # small enough that the "too big" test doesn't need gigabytes
 export MAX_UPLOAD_BYTES=$((50 * 1024 * 1024))

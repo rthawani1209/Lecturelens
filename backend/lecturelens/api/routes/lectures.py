@@ -1,12 +1,13 @@
+import asyncio
 import json
 import time
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from pathlib import PurePosixPath
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ... import access, queue, signing
 from ...config import get_settings
@@ -15,6 +16,7 @@ from ...pipeline.fetch import canonical_url, youtube_id
 from ...pipeline.stages import STAGES
 from ...storage import get_storage
 from ..deps import current_user, require_user
+from . import uploads as uploads_routes
 
 router = APIRouter(tags=["lectures"])
 
@@ -23,6 +25,8 @@ UPLOAD_URL_TTL_S = 24 * 3600
 
 
 class UploadIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)  # "   " is empty
+
     title: str = Field(min_length=1, max_length=200)
     filename: str = Field(min_length=1, max_length=255)
     size: int = Field(gt=0)
@@ -36,6 +40,8 @@ class UploadOut(BaseModel):
 
 
 class ImportIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)  # "   " is empty
+
     url: str = Field(min_length=1, max_length=500)
     title: str = Field("", max_length=200)
     week: int | None = Field(None, ge=0, le=52)
@@ -89,6 +95,7 @@ def start_upload(course_id: UUID, body: UploadIn, user: dict = Depends(require_u
     with connection() as conn, conn.transaction():
         if access.course(conn, user["id"], course_id, write=True) is None:
             raise HTTPException(404, "course not found")
+        _daily_limit(conn, user["id"])
         lid = conn.execute(
             "INSERT INTO lectures (course_id, title, week, position, status, created_by)"
             " VALUES (%s, %s, %s, %s, 'uploading', %s) RETURNING id",
@@ -99,6 +106,7 @@ def start_upload(course_id: UUID, body: UploadIn, user: dict = Depends(require_u
             " RETURNING id",
             (lid, user["id"], body.filename, body.size),
         ).fetchone()["id"]
+    uploads_routes.sweep_parts(UPLOAD_URL_TTL_S)
     return {"lecture_id": lid, "upload_url": upload_url(uid), "chunk_size": s.upload_chunk_bytes}
 
 
@@ -110,6 +118,7 @@ def import_lecture(course_id: UUID, body: ImportIn, user: dict = Depends(require
     with connection() as conn, conn.transaction():
         if access.course(conn, user["id"], course_id, write=True) is None:
             raise HTTPException(404, "course not found")
+        _daily_limit(conn, user["id"])
         # empty title: the fetch stage fills in the video's own title
         lid = conn.execute(
             "INSERT INTO lectures (course_id, title, week, position, status, source_url,"
@@ -125,6 +134,38 @@ def import_lecture(course_id: UUID, body: ImportIn, user: dict = Depends(require
         ).fetchone()["id"]
     queue.enqueue(lid)
     return _detail(lid)
+
+
+def _daily_limit(conn, user_id) -> None:
+    """Count this addition against today's caps, or refuse it with a 429.
+
+    Runs inside the caller's transaction. The advisory lock makes concurrent
+    requests take turns, so twelve at once can't all see "4 so far".
+    """
+    s = get_settings()
+    if not (s.daily_lectures_per_user or s.daily_lectures_total):
+        return
+    conn.execute("SELECT pg_advisory_xact_lock(hashtext('lecture_adds'))")
+    if s.daily_lectures_per_user:
+        n = conn.execute(
+            "SELECT count(*) AS n FROM lecture_adds"
+            " WHERE user_id = %s AND at > now() - interval '1 day'",
+            (user_id,),
+        ).fetchone()["n"]
+        if n >= s.daily_lectures_per_user:
+            raise HTTPException(
+                429,
+                f"You've added {n} lectures today, the most this site allows. Try again tomorrow.",
+            )
+    if s.daily_lectures_total:
+        n = conn.execute(
+            "SELECT count(*) AS n FROM lecture_adds WHERE at > now() - interval '1 day'"
+        ).fetchone()["n"]
+        if n >= s.daily_lectures_total:
+            raise HTTPException(
+                429, "This demo has processed all the uploads it can for today. Try again tomorrow."
+            )
+    conn.execute("INSERT INTO lecture_adds (user_id) VALUES (%s)", (user_id,))
 
 
 def _detail(lecture_id: UUID) -> dict:
@@ -161,6 +202,10 @@ def friendly_error(stage: str, error: str) -> str:
     if error.startswith("MediaError"):
         if stage == "fetch":
             return "Couldn't download this video. Check the link and that it's public."
+        if "no video track" in error:
+            return "This file has sound but no picture. Upload the video itself."
+        if "convert it to MP4" in error:
+            return "Browsers can't play this format. Convert it to MP4 (H.264) and upload again."
         return "This file isn't a playable video."
     return f"Something went wrong while processing ({stage}). Try again."
 
@@ -192,12 +237,14 @@ def lecture_events(
     )
 
 
-def progress_events(
+async def progress_events(
     lecture_id: UUID, poll_s: float = 1.0, ping_s: float = 15.0, max_s: float = 4 * 3600
-) -> Iterator[str]:
+) -> AsyncIterator[str]:
+    # async so an open stream holds no worker thread while it waits; only the
+    # database read borrows one, for a moment
     last, last_sent, started = None, time.monotonic(), time.monotonic()
     while time.monotonic() - started < max_s:
-        detail = _detail(lecture_id)
+        detail = await asyncio.to_thread(_detail, lecture_id)
         snapshot = json.dumps(detail, default=str)
         if snapshot != last:
             yield f"event: progress\ndata: {snapshot}\n\n"
@@ -207,7 +254,8 @@ def progress_events(
             last_sent = time.monotonic()
         if detail["status"] in ("ready", "failed"):
             return
-        time.sleep(poll_s)
+        # nothing changes server-side while the browser is still sending the file
+        await asyncio.sleep(poll_s * 5 if detail["status"] == "uploading" else poll_s)
 
 
 def _writable(lecture_id: UUID, user: dict) -> dict:
@@ -244,5 +292,10 @@ def delete_lecture(lecture_id: UUID, user: dict = Depends(require_user)) -> Resp
     if lec["storage_key"] and lec["storage_key"].startswith(f"lectures/{lecture_id}/"):
         storage.delete_prefix(lec["storage_key"])
     with connection() as conn:
+        uploads = conn.execute(
+            "DELETE FROM uploads WHERE lecture_id = %s RETURNING id", (lecture_id,)
+        ).fetchall()
         conn.execute("DELETE FROM lectures WHERE id = %s", (lecture_id,))
+    for up in uploads:  # a half-sent file would otherwise sit on disk forever
+        uploads_routes.part_path(up["id"]).unlink(missing_ok=True)
     return Response(status_code=204)

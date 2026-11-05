@@ -10,6 +10,7 @@ signed, so chunks don't need the session cookie and the link can't be guessed.
 
 import hashlib
 import re
+import time
 from pathlib import Path, PurePosixPath
 from uuid import UUID
 
@@ -34,7 +35,19 @@ def _resume(received: int) -> Response:
     return Response(status_code=308, headers=headers)
 
 
-def _part(upload_id: UUID) -> Path:
+def sweep_parts(max_age_s: float) -> None:
+    """Delete half-sent files nobody can finish any more (their link has expired)."""
+    folder = Path(get_settings().upload_dir)
+    cutoff = time.time() - max_age_s
+    for part in folder.glob("*.part"):
+        try:
+            if part.stat().st_mtime < cutoff:
+                part.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def part_path(upload_id: UUID) -> Path:
     return Path(get_settings().upload_dir) / f"{upload_id}.part"
 
 
@@ -88,7 +101,7 @@ def _store(upload_id: UUID, first: int | None, total: int, body: bytes) -> Respo
                 {"detail": "This file isn't a video. Try an mp4, mov, mkv or webm."}, 415
             )
 
-        part = _part(upload_id)
+        part = part_path(upload_id)
         part.parent.mkdir(parents=True, exist_ok=True)
         with open(part, "r+b" if part.exists() else "wb") as f:
             f.seek(first)

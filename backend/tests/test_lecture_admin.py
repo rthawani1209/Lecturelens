@@ -74,3 +74,20 @@ def test_only_the_owner_can_delete(owned, db, storage, tmp_path, sign_in):
     assert db.execute("SELECT count(*) FROM lectures WHERE id = %s", (lid,)).fetchone()[0] == 0
     assert not storage.exists(f"lectures/{lid}/frames/f.jpg")
     assert client.get(f"/lectures/{lid}").status_code == 404
+
+
+def test_a_lecture_deleted_mid_processing_isnt_retried(owned, db, storage, monkeypatch):
+    from lecturelens.pipeline import stages
+
+    client, lid, _ = owned
+
+    def deleted_meanwhile(*args):
+        client.delete(f"/lectures/{lid}")
+        storage.put_file(f"lectures/{lid}/frames/1.jpg", __file__)  # written after the delete
+        raise RuntimeError("lecture vanished")
+
+    monkeypatch.setattr(stages, "run_pipeline", deleted_meanwhile)
+    monkeypatch.setattr("lecturelens.worker.run_pipeline", deleted_meanwhile)
+    result = process_lecture.apply(args=[str(lid)])
+    assert result.successful()  # no retry, no error
+    assert not storage.exists(f"lectures/{lid}/frames/1.jpg")

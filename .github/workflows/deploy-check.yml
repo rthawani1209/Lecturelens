@@ -1,0 +1,49 @@
+# Starts the production stack (deploy/docker-compose.yml, behind Caddy) on a fresh
+# runner and runs deploy/smoke.py against it: demo sign-in, upload, processing,
+# search and playback over HTTPS. Same steps bootstrap.sh takes on a real server.
+name: Deploy check
+
+on:
+  push:
+    branches: [main]
+    paths: [deploy/**, backend/**, frontend/Dockerfile, frontend/next.config.ts, scripts/seed_demo.py]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/get_models.sh
+      - name: Test video (the first 2 minutes of MIT 18.06, lecture 1)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+          rel=https://github.com/rthawani1209/lecturelens/releases/download/ocw-18.06
+          mkdir -p data/ocw/18.06
+          curl -fsSL --retry 3 -o data/ocw/18.06/manifest.json "$rel/manifest.json"
+          curl -fsSL --retry 3 -o data/ocw/18.06/lec01.mp4 "$rel/lec01.mp4"
+          ffmpeg -loglevel error -ss 60 -t 120 -i data/ocw/18.06/lec01.mp4 -c copy clip.mp4
+      - name: Start the stack
+        run: |
+          cat > deploy/.env <<ENV
+          SITE_ADDRESS=localhost
+          POSTGRES_PASSWORD=$(openssl rand -hex 16)
+          SECRET_KEY=$(openssl rand -hex 32)
+          DEMO_LOGIN=true
+          DAILY_LECTURES_PER_USER=2
+          DAILY_LECTURES_TOTAL=20
+          ENV
+          docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+          for _ in $(seq 90); do curl -skf https://localhost/api/health && break; sleep 2; done
+      - run: python3 deploy/smoke.py https://localhost clip.mp4 "solve a system of linear equations" --insecure --timeout 900
+      - name: Seeding a course works the way bootstrap.sh does it
+        run: |
+          docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec -T worker \
+            python /scripts/seed_demo.py /ocw/18.06 --only 1 --queue
+          curl -skf https://localhost/api/courses/public | grep -q '"code":"18.06"'
+      - if: failure()
+        run: docker compose -f deploy/docker-compose.yml --env-file deploy/.env logs --tail 80

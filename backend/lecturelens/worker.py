@@ -31,9 +31,22 @@ def process_lecture(self, lecture_id: str) -> None:
         # a broken or non-video file won't fix itself: fail now instead of retrying
         _mark_failed(lid)
     except Exception:
+        if not _exists(lid):
+            # deleted while it was processing; clear out whatever stages wrote meanwhile
+            from .storage import get_storage
+
+            get_storage().delete_prefix(f"lectures/{lid}/")
+            return
         if self.request.retries >= self.max_retries:
             _mark_failed(lid)
         raise
+
+
+def _exists(lid: UUID) -> bool:
+    from .db import connection
+
+    with connection() as conn:
+        return conn.execute("SELECT 1 FROM lectures WHERE id = %s", (lid,)).fetchone() is not None
 
 
 def _mark_failed(lid: UUID) -> None:

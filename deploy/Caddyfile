@@ -1,0 +1,5 @@
+# HTTPS certificate from Let's Encrypt, renewed automatically.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}

@@ -40,3 +40,10 @@ test("sign in, sign out, and the theme sticks", async ({ page }) => {
     await expect(page).toHaveURL(new RegExp(`${path}$`));
   }
 });
+
+test("the demo button signs in without an email", async ({ page }) => {
+  await page.goto("/signin?next=/upload");
+  await page.getByRole("button", { name: "Try it without an account" }).click();
+  await expect(page).toHaveURL(/\/upload$/);
+  await expect(page.getByRole("button", { name: /Account: demo-.*@demo\.invalid/ })).toBeVisible();
+});

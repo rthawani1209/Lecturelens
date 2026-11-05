@@ -1,0 +1,7 @@
+[Unit]
+Description=Update LectureLens from GitHub
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/lecturelens/deploy/update.sh

@@ -1,0 +1,108 @@
+# Production stack for one server. bootstrap.sh writes .env next to this file and
+# starts it; nothing but Caddy (80/443) is reachable from outside.
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://lecturelens:${POSTGRES_PASSWORD}@postgres:5432/lecturelens
+  REDIS_URL: redis://redis:6379/0
+  STORAGE_BACKEND: local
+  LOCAL_STORAGE_DIR: /app/data/storage
+  UPLOAD_DIR: /app/data/uploads
+  MODELS_DIR: /models
+  SECRET_KEY: ${SECRET_KEY}
+  APP_URL: https://${SITE_ADDRESS}
+  API_URL: https://${SITE_ADDRESS}/api
+  COOKIE_SECURE: "true"
+  DEMO_LOGIN: ${DEMO_LOGIN:-false}
+  DAILY_LECTURES_PER_USER: ${DAILY_LECTURES_PER_USER:-0}
+  DAILY_LECTURES_TOTAL: ${DAILY_LECTURES_TOTAL:-0}
+  MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-4294967296}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  SMTP_URL: ${SMTP_URL:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
+services:
+  caddy:
+    image: caddy:2
+    restart: always
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    depends_on: [web]
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: always
+    environment:
+      POSTGRES_USER: lecturelens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: lecturelens
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lecturelens"]
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+
+  migrate:
+    build: ../backend
+    command: ["python", "-m", "lecturelens.db.migrate"]
+    environment: *backend-env
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    build: ../backend
+    restart: always
+    environment:
+      <<: *backend-env
+      RERANKER_URL: http://serving:8501
+    volumes:
+      - appdata:/app/data
+      - ../models:/models:ro
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_started}
+
+  web:
+    build:
+      context: ../frontend
+      args: {API_URL: "http://api:8000"}
+    restart: always
+    depends_on: [api]
+
+  serving:
+    image: tensorflow/serving:2.21.0
+    restart: always
+    command: ["--model_config_file=/config/models.config"]
+    volumes:
+      - ../models:/models:ro
+      - ../ml/serving:/config:ro
+
+  worker:
+    build: ../backend
+    restart: always
+    # one lecture at a time: whisper and OCR use every core, and two at once can run out of memory
+    command: ["celery", "-A", "lecturelens.worker", "worker", "-l", "info", "--concurrency", "1"]
+    environment:
+      <<: *backend-env
+      TAGGER_URL: http://serving:8501
+    volumes:
+      - appdata:/app/data
+      - ../models:/models:ro
+      - ../data/ocw:/ocw:ro
+      - ../scripts:/scripts:ro
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_started}
+
+volumes:
+  pgdata:
+  appdata:
+  caddydata:

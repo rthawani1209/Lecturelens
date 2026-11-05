@@ -94,3 +94,16 @@ token count, and per-user limits apply per minute, day and month.
   including a phone-width pass, and any console error fails the test.
 
 `scripts/check.sh` runs all of it, the same as CI.
+
+## Running it in public
+
+`deploy/` runs the whole stack on one server. Caddy is the only thing listening on
+the internet; it gets an HTTPS certificate and forwards to the web app, which forwards
+`/api` to FastAPI as above. Storage is a Docker volume shared by the API and the
+worker instead of MinIO, since there is only one machine. The worker processes one
+lecture at a time so whisper and OCR can't run the server out of memory. Visitors can
+press "Try it without an account" to get a throwaway account of their own, and
+uploads are capped per account and per day so a public demo can't be run up. A
+systemd timer pulls `main` every 15 minutes and rebuilds, and the Deploy check
+workflow starts this same stack on a fresh machine and runs `deploy/smoke.py` against
+it whenever the backend or the deploy files change.

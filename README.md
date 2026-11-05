@@ -75,6 +75,7 @@ ml/                 training and evaluation (separate venv: ml/requirements.txt)
   tagger/           CLIP-teacher labels + MobileNetV3 frame tagger
   serving/          TF Serving config
 scripts/            check.sh (same lint + tests as CI), e2e.sh, OCW downloader, demo seeding
+deploy/             one-server production setup: bootstrap script, compose file, Caddy, smoke test
 docs/               ARCHITECTURE, CLAIMS, INTERVIEW
 models/             pretrained models (downloaded, not committed)
 docker-compose.yml  local stack: Postgres + pgvector, Redis, MinIO, TF Serving, API, worker, web
@@ -101,6 +102,29 @@ Everything CI runs (lint, backend and model tests, frontend checks, browser test
 
 ```bash
 TEST_DATABASE_URL=postgresql://lecturelens:lecturelens@localhost:5432/lecturelens_test scripts/check.sh
+```
+
+## Deploy it
+
+One server with 4 vCPUs and 8 GB of memory runs everything (Hetzner CX32 or similar,
+Ubuntu 24.04). As root on the new server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rthawani1209/lecturelens/main/deploy/bootstrap.sh | bash
+```
+
+Or paste `deploy/cloud-init.yaml` as the server's user data when creating it, and it
+runs by itself. The script installs Docker, writes `deploy/.env` with fresh secrets,
+downloads the models and the MIT lectures, starts the stack behind Caddy with an
+HTTPS certificate for `<server-ip>.sslip.io`, and queues the lectures (a few hours on
+CPU; the site works while they process). A timer pulls `main` every 15 minutes and
+rebuilds if anything changed. The public site has a "Try it without an account"
+button and caps uploads per day; both are settings in `deploy/.env`.
+
+Check a running site end to end:
+
+```bash
+python3 deploy/smoke.py https://<server-ip>.sslip.io clip.mp4 "a phrase said in the clip"
 ```
 
 ## Data

@@ -13,12 +13,17 @@ export function SignIn() {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [why, setWhy] = useState("");
   const [google, setGoogle] = useState(false);
+  const [demo, setDemo] = useState<"off" | "on" | "busy" | "failed">("off");
+  const router = useRouter();
   const next = safeNext(params.get("next"));
 
   useEffect(() => {
     api
       .providers()
-      .then((p) => setGoogle(p.google))
+      .then((p) => {
+        setGoogle(p.google);
+        if (p.demo) setDemo("on");
+      })
       .catch(() => setGoogle(false));
     try {
       sessionStorage.setItem("ll-next", next);
@@ -85,6 +90,30 @@ export function SignIn() {
           <a className={styles.google} href="/api/auth/google/start">
             Continue with Google
           </a>
+        )}
+        {demo !== "off" && (
+          <button
+            type="button"
+            className={styles.google}
+            disabled={demo === "busy"}
+            onClick={async () => {
+              setDemo("busy");
+              try {
+                await api.demo();
+                router.replace(next);
+                router.refresh();
+              } catch {
+                setDemo("failed");
+              }
+            }}
+          >
+            {demo === "busy" ? "Opening the demo…" : "Try it without an account"}
+          </button>
+        )}
+        {demo === "failed" && (
+          <p className={styles.error} role="alert">
+            The demo account couldn&apos;t be created. Try again in a minute.
+          </p>
         )}
         <p className={styles.small}>
           No password to remember. <Link href="/search">Search works without an account.</Link>

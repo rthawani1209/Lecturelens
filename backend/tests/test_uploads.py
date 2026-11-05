@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 import pytest
@@ -228,13 +229,17 @@ def test_progress_stream(setup, db):
         " (%s, 'audio', 'running', 0.5)",
         (lid, lid),
     )
-    events = lecture_routes.progress_events(uuid.UUID(lid), poll_s=0.01)
-    first = next(events)
-    assert first.startswith("event: progress") and '"status": "uploading"' in first
-    db.execute("UPDATE lectures SET status = 'ready' WHERE id = %s", (lid,))
-    last = next(events)
-    assert '"status": "ready"' in last and '"progress": 1.0' in last
-    assert next(events, None) is None  # stream ends once the lecture is ready
+
+    async def read():
+        events = lecture_routes.progress_events(uuid.UUID(lid), poll_s=0.01)
+        first = await anext(events)
+        assert first.startswith("event: progress") and '"status": "uploading"' in first
+        db.execute("UPDATE lectures SET status = 'ready' WHERE id = %s", (lid,))
+        last = await anext(events)
+        assert '"status": "ready"' in last and '"progress": 1.0' in last
+        assert await anext(events, None) is None  # stream ends once the lecture is ready
+
+    asyncio.run(read())
 
     # over HTTP it's an event stream, and other people can't open it
     r = client.get(f"/lectures/{lid}/events")
@@ -249,3 +254,73 @@ def test_progress_stream(setup, db):
     from lecturelens.api.main import create_app
 
     assert TestClient(create_app()).get(f"/lectures/{lid}/events").status_code == 404
+
+
+def test_daily_lecture_limit(setup, monkeypatch):
+    from lecturelens.config import get_settings
+
+    client, course = setup
+    monkeypatch.setenv("DAILY_LECTURES_PER_USER", "2")
+    get_settings.cache_clear()
+    _start(client, course, MP4_HEAD)
+    r = client.post(
+        f"/courses/{course}/lectures/import", json={"url": "https://youtu.be/dQw4w9WgXcQ"}
+    )
+    assert r.status_code == 201, r.text
+    r = client.post(
+        f"/courses/{course}/lectures",
+        json={"title": "One more", "filename": "x.mp4", "size": 100},
+    )
+    assert r.status_code == 429
+    assert "Try again tomorrow" in r.json()["detail"]
+
+
+def test_site_wide_daily_limit(setup, sign_in, monkeypatch):
+    from lecturelens.config import get_settings
+
+    client, course = setup
+    monkeypatch.setenv("DAILY_LECTURES_TOTAL", "1")
+    get_settings.cache_clear()
+    _start(client, course, MP4_HEAD)
+    sign_in(client, "grace@example.com")
+    other = client.post("/courses", json={"title": "Linear algebra"}).json()["id"]
+    r = client.post(
+        f"/courses/{other}/lectures",
+        json={"title": "Eigenvalues", "filename": "x.mp4", "size": 100},
+    )
+    assert r.status_code == 429
+
+
+def test_deleting_doesnt_reset_the_limit_and_racing_doesnt_beat_it(setup, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from lecturelens.config import get_settings
+
+    client, course = setup
+    monkeypatch.setenv("DAILY_LECTURES_PER_USER", "3")
+    get_settings.cache_clear()
+    first = _start(client, course, MP4_HEAD)["lecture_id"]
+    assert client.delete(f"/lectures/{first}").status_code == 204
+
+    def add(i):
+        return client.post(
+            f"/courses/{course}/lectures",
+            json={"title": f"Race {i}", "filename": "x.mp4", "size": 100},
+        ).status_code
+
+    with ThreadPoolExecutor(8) as pool:
+        codes = list(pool.map(add, range(8)))
+    # one was used before the delete, so only two of the eight get through
+    assert sorted(codes) == [201, 201] + [429] * 6
+
+
+def test_delete_removes_a_half_sent_file(setup, storage):
+    client, course = setup
+    data = MP4_HEAD + bytes(1000)
+    up = _start(client, course, data)
+    r = _put(client, up["upload_url"], data, 0, 499, len(data))
+    assert r.status_code == 308
+    parts = list(lecture_routes.uploads_routes.part_path(uuid.uuid4()).parent.glob("*.part"))
+    assert len(parts) == 1
+    assert client.delete(f"/lectures/{up['lecture_id']}").status_code == 204
+    assert not parts[0].exists()

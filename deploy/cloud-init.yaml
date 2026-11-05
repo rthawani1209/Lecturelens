@@ -1,0 +1,4 @@
+#cloud-config
+# Paste into "Cloud config" / "User data" when creating the server.
+runcmd:
+  - [bash, -c, "for i in 1 2 3 4 5; do curl -fsSL https://raw.githubusercontent.com/rthawani1209/lecturelens/main/deploy/bootstrap.sh -o /root/bootstrap.sh && break; sleep 10; done; bash /root/bootstrap.sh"]

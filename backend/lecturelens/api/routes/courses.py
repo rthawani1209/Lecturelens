@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ... import access
 from ...db import connection
@@ -22,6 +22,8 @@ class CourseOut(BaseModel):
 
 
 class CourseIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)  # "   " is empty
+
     title: str = Field(min_length=1, max_length=200)
     code: str = Field("", max_length=40)
     term: str = Field("", max_length=40)

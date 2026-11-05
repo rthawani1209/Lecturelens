@@ -124,7 +124,12 @@ def test_google_off_without_client_id(client):
 
 
 def test_providers_only_offer_google_when_configured(client):
-    assert client.get("/auth/providers").json() == {"email": True, "google": False}
+    assert client.get("/auth/providers").json() == {
+        "email": True,
+        "google": False,
+        "demo": False,
+        "max_upload_bytes": 4 * 1024**3,
+    }
     assert client.get("/auth/google/start", follow_redirects=False).status_code == 404
 
 
@@ -132,3 +137,20 @@ def test_session_answers_200_signed_in_or_not(client, sign_in):
     assert client.get("/auth/session").json() == {"user": None}
     sign_in(client, "ada@example.com")
     assert client.get("/auth/session").json()["user"]["email"] == "ada@example.com"
+
+
+def test_demo_login_is_off_unless_enabled(client, db, monkeypatch):
+    from lecturelens.config import get_settings
+
+    assert client.post("/auth/demo").status_code == 404
+    monkeypatch.setenv("DEMO_LOGIN", "1")
+    get_settings.cache_clear()
+    try:
+        assert client.get("/auth/providers").json()["demo"] is True
+        first = client.post("/auth/demo").json()
+        assert first["email"].endswith("@demo.invalid")
+        assert client.get("/auth/me").json()["id"] == first["id"]
+        # every visitor gets their own account, so nobody sees another's uploads
+        assert client.post("/auth/demo").json()["id"] != first["id"]
+    finally:
+        get_settings.cache_clear()

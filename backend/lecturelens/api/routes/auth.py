@@ -81,7 +81,13 @@ def session(user: dict | None = Depends(current_user)) -> dict:
 @router.get("/providers")
 def providers() -> dict:
     """Which sign-in buttons the web app should show."""
-    return {"email": True, "google": bool(get_settings().google_client_id)}
+    s = get_settings()
+    return {
+        "email": True,
+        "google": bool(s.google_client_id),
+        "demo": s.demo_login,
+        "max_upload_bytes": s.max_upload_bytes,  # so the upload page states the real limit
+    }
 
 
 @router.get("/google/start")
@@ -150,6 +156,17 @@ def google_callback(request: Request, code: str = "", state: str = "") -> Redire
     resp.delete_cookie(STATE_COOKIE)
     _set_session(resp, create_session(uid))
     return resp
+
+
+@router.post("/demo", response_model=MeOut)
+def demo(response: Response) -> dict:
+    """Public demo only: sign in as a new throwaway account, no email needed."""
+    if not get_settings().demo_login:
+        raise HTTPException(404, "not found")
+    with connection() as conn:
+        uid = get_or_create_user(conn, f"demo-{secrets.token_hex(6)}@demo.invalid", "Demo user")
+    _set_session(response, create_session(uid))
+    return _me(uid)
 
 
 @router.get("/me", response_model=MeOut)

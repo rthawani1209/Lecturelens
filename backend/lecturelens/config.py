@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # the API as the browser sees it: behind the web app's /api proxy, so cookies stay first-party
     api_url: str = "http://localhost:3000/api"
     session_days: int = 30
+    # public demo: a "Try it" button signs visitors in as a fresh throwaway account
+    demo_login: bool = False
+    # lectures one account may add per 24 h (0 = no limit); keeps a public demo affordable
+    daily_lectures_per_user: int = 0
+    daily_lectures_total: int = 0  # same, for everyone together
     cookie_secure: bool = False  # true behind https
     google_client_id: str = ""
     google_client_secret: str = ""

@@ -68,6 +68,7 @@ pgvector, the demo course processed with `scripts/seed_demo.py`).
 | AI rate and token limits per user (per minute, day and month) | `backend/lecturelens/ai.py` (`guard`), `ai_calls` table, `test_ai_limits` | `cd backend && pytest tests/test_study.py -k limits` | 6/min, 200k tokens/day | done |
 | API and worker containers run as a non-root user; the web app sends a content security policy | `backend/Dockerfile`, `frontend/Dockerfile` (`USER`), `headers()` in `frontend/next.config.ts`; `frontend/e2e/account.spec.ts` checks the header and fails on any console error (which is where CSP violations show up) | `scripts/e2e.sh` | | done |
 | CodeQL (Python, TypeScript) and Trivy (dependencies, Dockerfiles, secrets) scan every push to main and weekly; findings go to the GitHub Security tab | `.github/workflows/security.yml` | Actions tab, Security workflow | | done |
+| Bad input gets a 422 with a reason, never a 500: NUL bytes, half an emoji, NaN or Infinity, whitespace-only titles | exception handlers in `backend/lecturelens/api/main.py`, `backend/tests/test_inputs.py` | `cd backend && pytest tests/test_inputs.py` | | done |
 | Sign-in links rate limited per address | `MAX_LIVE_LINKS` in `backend/lecturelens/auth.py`, `test_too_many_links_for_one_address` | `cd backend && pytest tests/test_auth.py` | 5 unused links per 15 min | done |
 | Export / delete my data | | | | cut |
 
@@ -83,5 +84,13 @@ pgvector, the demo course processed with `scripts/seed_demo.py`).
 
 | Claim | Proof | Reproduce | Number | Status |
 |---|---|---|---|---|
-| Playwright clicks through every screen against the real stack (API, worker, Postgres, Redis, Next.js) and fails on any console error | `frontend/e2e/`, `scripts/e2e.sh`, `e2e` job in `.github/workflows/ci.yml` | `scripts/e2e.sh` | 16 tests, including a 390 px phone pass | done |
+| Playwright clicks through every screen against the real stack (API, worker, Postgres, Redis, Next.js) and fails on any console error | `frontend/e2e/`, `scripts/e2e.sh`, `e2e` job in `.github/workflows/ci.yml` | `scripts/e2e.sh` | 17 tests, including a 390 px phone pass | done |
 | Upload edge cases: dropped connection, cancel and resume, non-video, over the limit, cut-off file, retry | `frontend/e2e/upload.spec.ts` | `scripts/e2e.sh` | | done |
+
+## Deployment
+
+| Claim | Proof | Reproduce | Number | Status |
+|---|---|---|---|---|
+| One script sets up a fresh server: Docker, secrets, models, HTTPS through Caddy, the MIT lectures, and updates from `main` every 15 minutes | `deploy/bootstrap.sh`, `deploy/docker-compose.yml`, `deploy/Caddyfile`, `deploy/update.sh` | see "Deploy it" in the README | | done |
+| Every change to the backend or deploy files starts the production stack on a fresh machine and checks it end to end over HTTPS (demo sign-in, upload, processing, search, playback) | `deploy/smoke.py`, `.github/workflows/deploy-check.yml` | `python3 deploy/smoke.py <site> <video> "<phrase>"` | | done |
+| A public demo can't be run up: visitors get their own throwaway account, and uploads are capped per account and per day (deleting doesn't refund, and concurrent requests can't race past the cap) | `/auth/demo` in `backend/lecturelens/api/routes/auth.py`, `_daily_limit` in `lectures.py`, `test_demo_login_is_off_unless_enabled`, `test_daily_lecture_limit`, `test_site_wide_daily_limit`, `test_deleting_doesnt_reset_the_limit_and_racing_doesnt_beat_it` | `cd backend && pytest tests/test_auth.py tests/test_uploads.py` | 2 per account, 20 site-wide | done |

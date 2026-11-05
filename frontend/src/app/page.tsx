@@ -37,7 +37,7 @@ export default async function Home() {
           LectureLens reads every lecture four ways, so you can find a proof, a diagram or a line of
           code by asking for it.
         </p>
-        <HomeSearch courseId={data?.courses[0]?.id} />
+        <HomeSearch />
         <ul className={styles.channels} aria-label="What gets indexed">
           {CHANNELS.map((c) => (
             <li key={c.label}>

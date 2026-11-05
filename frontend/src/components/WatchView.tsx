@@ -31,7 +31,11 @@ export function WatchView({ id }: { id: string }) {
           return d;
         },
         (e: Error) => {
-          setError(e instanceof ApiError && e.status === 404 ? "not-found" : e.message);
+          setError(
+            e instanceof ApiError && (e.status === 404 || e.status === 422)
+              ? "not-found"
+              : e.message,
+          );
           return null;
         },
       ),

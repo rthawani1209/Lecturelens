@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ... import access
 from ...db import connection
@@ -45,7 +45,9 @@ class WatchOut(BaseModel):
 
 
 class NoteIn(BaseModel):
-    t_s: float = Field(ge=0)
+    model_config = ConfigDict(str_strip_whitespace=True)  # "   " is empty
+
+    t_s: float = Field(ge=0, le=48 * 3600, allow_inf_nan=False)
     text: str = Field(min_length=1, max_length=2000)
 
 

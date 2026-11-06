@@ -206,7 +206,7 @@ export function SearchView({ courses: shared }: { courses: Course[] }) {
               {hits.length === 0 && (
                 <div className={styles.empty}>
                   {tag === "all"
-                    ? "Nothing in these lectures matches that. Try other words, or switch to Hybrid."
+                    ? `Nothing in these lectures matches that. Try other words${mode === "hybrid" ? "" : ", or switch to Hybrid"}.`
                     : `No ${tagLabel} frames near these moments. Try another filter.`}
                 </div>
               )}

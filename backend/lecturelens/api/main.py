@@ -69,7 +69,11 @@ def create_app() -> FastAPI:
         # https means a real deployment; the default key is in this public repo
         raise RuntimeError("set SECRET_KEY to a long random value")
     # the interactive docs are for development; production doesn't advertise every route
-    docs = {} if not settings.cookie_secure else {"docs_url": None, "redoc_url": None}
+    docs = (
+        {}
+        if not settings.cookie_secure
+        else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    )
     app = FastAPI(title="LectureLens API", version=__version__, lifespan=lifespan, **docs)
     app.add_middleware(
         CORSMiddleware,

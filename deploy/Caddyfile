@@ -2,5 +2,9 @@
 {$SITE_ADDRESS} {
 	encode zstd gzip
 	header Strict-Transport-Security "max-age=31536000"
+	# uploads come in 8 MiB chunks; anything bigger is refused here, not with a 502 later
+	request_body {
+		max_size 10MB
+	}
 	reverse_proxy web:3000
 }

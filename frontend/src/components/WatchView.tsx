@@ -139,7 +139,11 @@ export function WatchView({ id }: { id: string }) {
           {data.status !== "ready" ? (
             <div className={styles.notReady} role="status">
               <p className="label">{data.status}</p>
-              <p>This lecture is still being processed.</p>
+              <p>
+                {data.status === "failed"
+                  ? "This lecture didn't finish processing."
+                  : "This lecture is still being processed."}
+              </p>
               <Link href={`/upload?lecture=${data.id}`}>Watch the pipeline</Link>
             </div>
           ) : (

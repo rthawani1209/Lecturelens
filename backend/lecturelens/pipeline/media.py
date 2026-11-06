@@ -55,14 +55,47 @@ def probe(path: Path) -> dict:
         first.setdefault(kind, name)
     dur = re.search(r"duration=([\d.]+)", out)
     fmt = re.search(r"format_name=([\w,]+)", out)
+    duration = float(dur.group(1)) if dur else None
+    if not duration and "video" in first:
+        duration = _read_duration(path)
     return {
         "format": fmt.group(1) if fmt else "",
-        "duration_s": float(dur.group(1)) if dur else None,
+        "duration_s": duration,
         "has_video": "video" in first,
         "has_audio": "audio" in first,
         "video_codec": first.get("video"),
         "audio_codec": first.get("audio"),
     }
+
+
+def _read_duration(path: Path) -> float | None:
+    """For files whose header has no length (a browser's MediaRecorder webm, a piped
+    stream): read through the packets, without decoding, to the last timestamp."""
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "info",
+            "-nostats",
+            "-stats",
+            "-i",
+            str(path),
+            "-map",
+            "0:v:0",
+            "-c",
+            "copy",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    times = re.findall(r"time=(\d+):(\d+):([\d.]+)", proc.stderr)
+    if not times:
+        return None
+    h, m, sec = times[-1]
+    return int(h) * 3600 + int(m) * 60 + float(sec)
 
 
 # Containers every current browser plays. Anything else (mkv, mostly) gets its

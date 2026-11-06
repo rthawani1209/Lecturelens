@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from ... import access
 from ...db import connection
+from ...storage import get_storage
 from ..deps import current_user, require_user
 
 router = APIRouter(prefix="/courses", tags=["courses"])
@@ -90,6 +91,57 @@ def create_course(body: CourseIn, user: dict = Depends(require_user)) -> dict:
                     [(cid, t[:80]) for t in sorted(terms)],
                 )
         return conn.execute(_LIST, {"u": user["id"], "ids": [cid]}).fetchone()
+
+
+class CourseEdit(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    title: str | None = Field(None, min_length=1, max_length=200)
+    code: str | None = Field(None, max_length=40)
+
+
+def _own(conn, user: dict, course_id: UUID) -> dict:
+    course = access.course(conn, user["id"], course_id, write=True)
+    if course is None:
+        raise HTTPException(404, "course not found")
+    return course
+
+
+@router.patch("/{course_id}", response_model=CourseOut)
+def edit_course(course_id: UUID, body: CourseEdit, user: dict = Depends(require_user)) -> dict:
+    with connection() as conn:
+        _own(conn, user, course_id)
+        conn.execute(
+            "UPDATE courses SET title = coalesce(%s, title), code = coalesce(%s, code)"
+            " WHERE id = %s",
+            (body.title, body.code, course_id),
+        )
+        return conn.execute(_LIST, {"u": user["id"], "ids": [course_id]}).fetchone()
+
+
+@router.delete("/{course_id}", status_code=204)
+def delete_course(course_id: UUID, user: dict = Depends(require_user)) -> Response:
+    """The course, its lectures and every file they stored."""
+    from . import uploads as uploads_routes
+
+    with connection() as conn:
+        _own(conn, user, course_id)
+        lectures = conn.execute(
+            "SELECT id FROM lectures WHERE course_id = %s", (course_id,)
+        ).fetchall()
+        parts = conn.execute(
+            "SELECT u.id FROM uploads u JOIN lectures l ON l.id = u.lecture_id"
+            " WHERE l.course_id = %s",
+            (course_id,),
+        ).fetchall()
+        conn.execute("DELETE FROM courses WHERE id = %s", (course_id,))
+    # files after the rows, so a half-finished delete never leaves rows pointing at nothing
+    storage = get_storage()
+    for lec in lectures:
+        storage.delete_prefix(f"lectures/{lec['id']}/")
+    for up in parts:
+        uploads_routes.part_path(up["id"]).unlink(missing_ok=True)
+    return Response(status_code=204)
 
 
 @router.get("/{course_id}/lectures", response_model=list[LectureOut])

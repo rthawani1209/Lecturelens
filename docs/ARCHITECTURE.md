@@ -62,9 +62,11 @@ the re-ranker, and collapsed into moments with a jump time. Meaning-only is the
 default because it scored best on validation; `ml/rerank/gate.py` fails CI if the
 default ever falls below a single retriever. The API loads the ONNX models in the
 background at startup, so the first search isn't the slow one. Meaning search always
-has a nearest sentence, even for gibberish, so matches under a cosine of 0.30 are
-dropped: no relevant hit in any of the three courses' labeled questions scores below
-that, and most off-topic queries never reach it (`ml/eval/meaning_floor.json`).
+has a nearest sentence and keyword search ORs the query's words, so even gibberish
+"matches". A result has to be a real match to be shown: meaning at a cosine of 0.30 or
+more, or every word of the query in the speech or on a slide. No relevant hit in any of
+the three courses' labeled questions is lost, recall is unchanged, and 8 of 10
+nonsense queries come back empty (`ml/eval/meaning_floor.json`).
 
 ## Watching
 
@@ -116,4 +118,5 @@ without saying so.
 If the worker is killed mid-lecture (a deploy, a crash), it puts every unfinished
 lecture back in the queue when it starts again, and a Postgres lock keeps one lecture
 from running twice. Redis keeps its queue on disk. A nightly timer backs up the
-database and the uploaded files (`deploy/backup.sh`).
+database and the uploaded files (`deploy/backup.sh`, `deploy/restore.sh`). An update
+that fails to build or to come up healthy puts the previous version back.

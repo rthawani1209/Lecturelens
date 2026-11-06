@@ -15,6 +15,37 @@ def test_probe_reports_streams(lecture_fixture):
     assert info["duration_s"] == pytest.approx(truth["duration_s"], abs=0.5)
 
 
+def test_probe_measures_a_video_whose_header_has_no_length(tmp_path):
+    # what a browser's MediaRecorder or a piped ffmpeg writes: no duration in the header
+    import subprocess
+
+    enc = subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=d=7:s=320x240:r=10",
+            "-c:v",
+            "libvpx-vp9",
+            "-deadline",
+            "realtime",
+            "-cpu-used",
+            "8",
+            "-f",
+            "webm",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+    )
+    piped = tmp_path / "recorded.webm"
+    piped.write_bytes(enc.stdout)
+    assert probe(piped)["duration_s"] == pytest.approx(7, abs=0.5)
+
+
 def test_probe_rejects_non_video(tmp_path):
     fake = tmp_path / "lecture.mp4"
     fake.write_text("not a video")

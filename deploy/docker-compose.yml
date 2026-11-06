@@ -15,6 +15,7 @@ x-backend-env: &backend-env
   API_URL: https://${SITE_ADDRESS}/api
   COOKIE_SECURE: "true"
   DEMO_LOGIN: ${DEMO_LOGIN:-false}
+  DEMO_LOGINS_PER_HOUR: ${DEMO_LOGINS_PER_HOUR:-5}
   DAILY_LECTURES_PER_USER: ${DAILY_LECTURES_PER_USER:-0}
   DAILY_LECTURES_TOTAL: ${DAILY_LECTURES_TOTAL:-0}
   DAILY_LECTURES_PER_IP: ${DAILY_LECTURES_PER_IP:-0}
@@ -43,7 +44,8 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data
-    depends_on: [web]
+    depends_on:
+      web: {condition: service_healthy}
 
   postgres:
     <<: *logging
@@ -107,6 +109,10 @@ services:
       context: ../frontend
       args: {API_URL: "http://api:8000"}
     restart: always
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/signin').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 5s
+      retries: 30
     depends_on:
       api: {condition: service_healthy}
 
@@ -125,6 +131,8 @@ services:
     restart: always
     # whisper's peaks stay inside this, so Postgres and the site keep their memory
     mem_limit: 5g
+    # a stage that finishes within a minute gets to save; anything longer is requeued on start
+    stop_grace_period: 60s
     # one lecture at a time: whisper and OCR use every core, and two at once can run out of memory
     command: ["celery", "-A", "lecturelens.worker", "worker", "-l", "info", "--concurrency", "1"]
     environment:

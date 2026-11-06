@@ -51,12 +51,12 @@
       "best": 0.23956022318245984
     },
     {
-      "query": "purple monkey dishwasher",
-      "best": 0.22121656428723702
+      "query": "best pizza in new york",
+      "best": 0.22791816841824375
     },
     {
-      "query": "best pizza in chicago",
-      "best": 0.20338979136134805
+      "query": "purple monkey dishwasher",
+      "best": 0.22121656428723702
     },
     {
       "query": "lorem ipsum dolor sit amet",
@@ -71,5 +71,31 @@
       "best": 0.14358352552603426
     }
   ],
-  "junk_above_floor": 2
+  "junk_above_floor": 2,
+  "junk_results_by_mode": {
+    "meaning": {
+      "xqzvbnm wibble": 0,
+      "asdf qwerty zxcv": 0,
+      "kjhg lkjh poiu": 1,
+      "purple monkey dishwasher": 0,
+      "lorem ipsum dolor sit amet": 0,
+      "best pizza in new york": 0,
+      "taylor swift tour dates": 0,
+      "how to fix a flat bike tire": 0,
+      "weather tomorrow": 1,
+      "banana bread recipe": 0
+    },
+    "hybrid": {
+      "xqzvbnm wibble": 0,
+      "asdf qwerty zxcv": 0,
+      "kjhg lkjh poiu": 1,
+      "purple monkey dishwasher": 0,
+      "lorem ipsum dolor sit amet": 0,
+      "best pizza in new york": 0,
+      "taylor swift tour dates": 0,
+      "how to fix a flat bike tire": 0,
+      "weather tomorrow": 1,
+      "banana bread recipe": 0
+    }
+  }
 }

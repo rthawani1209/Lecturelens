@@ -16,7 +16,7 @@ releases=https://github.com/rthawani1209/lecturelens/releases/download
 if ! command -v docker >/dev/null; then
   curl -fsSL https://get.docker.com | sh
 fi
-apt-get install -y git >/dev/null
+apt-get update -q && apt-get install -y -q git >/dev/null
 
 # whisper and the Next.js build both want more than 8 GB at their peaks
 if ! swapon --show | grep -q .; then
@@ -36,6 +36,8 @@ SITE_ADDRESS=${SITE_ADDRESS:-$ip.sslip.io}
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
 SECRET_KEY=$(openssl rand -hex 32)
 DEMO_LOGIN=true
+# a classroom behind one network address shares this
+DEMO_LOGINS_PER_HOUR=30
 DAILY_LECTURES_PER_USER=2
 DAILY_LECTURES_TOTAL=20
 DAILY_LECTURES_PER_IP=3
@@ -47,6 +49,11 @@ GOOGLE_CLIENT_SECRET=
 ENV
   chmod 600 "$env_file"
 fi
+
+# updates and backups first, so they're on even if a download or seeding below fails
+cp deploy/lecturelens-*.service deploy/lecturelens-*.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now lecturelens-update.timer lecturelens-backup.timer
 
 bash scripts/get_models.sh
 
@@ -73,11 +80,6 @@ fetch_course 18.06 ocw-18.06
 
 compose="docker compose -f deploy/docker-compose.yml --env-file $env_file"
 $compose up -d --build
-
-# updates and backups first, so they're on even if seeding below goes wrong
-cp deploy/lecturelens-*.service deploy/lecturelens-*.timer /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now lecturelens-update.timer lecturelens-backup.timer
 
 for course in 6.006 6.100L 18.06; do
   $compose exec -T worker python /scripts/seed_demo.py "/ocw/$course" --queue ||

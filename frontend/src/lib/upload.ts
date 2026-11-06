@@ -24,6 +24,10 @@ export class UploadError extends Error {
 
 type Fetch = typeof fetch;
 
+// the link lasts a day and the server clears half-sent files after that
+const EXPIRED =
+  "This upload was left too long and has expired. Choose the file again to start over.";
+
 /** Bytes the server already has, from a 308's Range header ("bytes=0-x"). */
 export function storedBytes(res: Response): number {
   const m = /bytes=0-(\d+)/.exec(res.headers.get("Range") ?? "");
@@ -43,6 +47,7 @@ async function ask(
   });
   if (res.status === 200 || res.status === 201) return { sent: total, done: await finished(res) };
   if (res.status === 308) return { sent: storedBytes(res) };
+  if (res.status === 403 || res.status === 404) throw new UploadError(EXPIRED, true);
   throw new UploadError(`upload status check failed (${res.status})`);
 }
 
@@ -99,6 +104,8 @@ export async function upload(
         sent = total;
       } else if (res.status === 308) {
         sent = storedBytes(res);
+      } else if (res.status === 403 || res.status === 404) {
+        throw new UploadError(EXPIRED, true);
       } else if (res.status >= 400 && res.status < 500) {
         const body = await res.json().catch(() => ({}));
         throw new UploadError(body.detail ?? `upload refused (${res.status})`, true);

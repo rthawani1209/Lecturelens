@@ -34,6 +34,7 @@ export function ScopeBand({
     const step = { ArrowRight: 1, ArrowLeft: -1, Home: -Infinity, End: Infinity }[e.key];
     if (step === undefined) return;
     e.preventDefault();
+    e.stopPropagation(); // the player's own arrow keys would seek as well
     const cells = [...e.currentTarget.querySelectorAll("button")];
     const at = cells.indexOf(document.activeElement as HTMLButtonElement);
     const next = Math.min(cells.length - 1, Math.max(0, (at < 0 ? current : at) + step));

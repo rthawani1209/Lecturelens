@@ -44,6 +44,7 @@ class Candidate:
     end_s: float
     ranks: dict[str, int] = field(default_factory=dict)
     scores: dict[str, float] = field(default_factory=dict)
+    real: bool = True  # see _gate
     frame_id: int | None = None  # frame that matched, if a visual retriever found it
 
 
@@ -71,13 +72,15 @@ class Hit:
 
 # OR the query's words together; ts_rank_cd still rewards windows that match more of them.
 _TSQUERY = "replace(plainto_tsquery('english', %(q)s)::text, '&', '|')::tsquery"
+# every word of the query, which is what counts as a real match (see retrieve)
+_ALL_WORDS = "plainto_tsquery('english', %(q)s)"
 
 
 def _keyword(conn, q: str, courses: Sequence[UUID], n: int) -> list[dict]:
     return conn.execute(
         f"""
         SELECT s.id AS segment_id, s.lecture_id, s.start_s, s.end_s,
-               ts_rank_cd(s.tsv, {_TSQUERY}, 32) AS score
+               ts_rank_cd(s.tsv, {_TSQUERY}, 32) AS score, s.tsv @@ {_ALL_WORDS} AS full
           FROM segments s JOIN lectures l ON l.id = s.lecture_id
          WHERE l.course_id = ANY(%(courses)s) AND s.tsv @@ {_TSQUERY}
          ORDER BY score DESC LIMIT %(n)s
@@ -103,7 +106,7 @@ def _ocr(conn, q: str, courses: Sequence[UUID], n: int) -> list[dict]:
     return conn.execute(
         f"""
         SELECT f.id AS frame_id, f.lecture_id, f.t_s,
-               ts_rank_cd(f.ocr_tsv, {_TSQUERY}, 32) AS score
+               ts_rank_cd(f.ocr_tsv, {_TSQUERY}, 32) AS score, f.ocr_tsv @@ {_ALL_WORDS} AS full
           FROM frames f JOIN lectures l ON l.id = f.lecture_id
          WHERE l.course_id = ANY(%(courses)s) AND f.ocr_tsv @@ {_TSQUERY}
          ORDER BY score DESC LIMIT %(n)s
@@ -147,7 +150,7 @@ def _frames_to_segments(conn, rows: list[dict]) -> list[dict]:
     out = []
     for m in sorted(mapped, key=lambda m: m["ord"]):
         r = rows[m["ord"]]
-        out.append({**m, "score": r["score"], "frame_id": r["frame_id"]})
+        out.append({**m, "score": r["score"], "frame_id": r["frame_id"], "full": r.get("full")})
     return out
 
 
@@ -172,16 +175,6 @@ def retrieve(
             vec = clip_embedder().embed_texts([q])[0]
             lists["visual"] = _frames_to_segments(conn, _visual(conn, vec, courses, n))
 
-    if "meaning" in lists:
-        # meaning search always finds a "nearest" sentence, even for gibberish. Below
-        # the floor nothing in the eval set was relevant (ml/eval/meaning_floor.json),
-        lists["meaning"] = [
-            r for r in lists["meaning"] if r["score"] >= get_settings().meaning_floor
-        ]
-        # and with no text match at all, picture matches alone are noise too
-        if not any(rows for name, rows in lists.items() if name != "visual"):
-            return {}
-
     cands: dict[int, Candidate] = {}
     for name, rows in lists.items():
         rank = 0
@@ -198,7 +191,29 @@ def retrieve(
             c.scores[name] = float(r["score"])
             if r.get("frame_id") and c.frame_id is None:
                 c.frame_id = r["frame_id"]
+    if "meaning" in lists:  # modes that answer in words; keyword-only and visual stay as asked
+        _gate(lists, cands)
     return cands
+
+
+def _gate(lists: dict[str, list[dict]], cands: dict[int, "Candidate"]) -> None:
+    """Mark the candidates that are really about the query.
+
+    Meaning search always has a nearest sentence and keyword search ORs the words
+    (so "best pizza in new york" matches every "new"), even for nonsense. A moment
+    counts when meaning clears its floor or the speech or a slide has every word
+    of the query; a picture alone counts only above its own floor. The lists stay
+    whole, so fusion and the re-ranker see the same features they were tuned on;
+    collapse() drops the rest. Floors and how they were picked:
+    ml/eval/meaning_floor.json.
+    """
+    s = get_settings()
+    real = {r["segment_id"] for r in lists["meaning"] if r["score"] >= s.meaning_floor}
+    for name in ("keyword", "ocr"):
+        real |= {r["segment_id"] for r in lists.get(name, []) if r["full"]}
+    real |= {r["segment_id"] for r in lists.get("visual", []) if r["score"] >= s.visual_floor}
+    for sid, c in cands.items():
+        c.real = sid in real
 
 
 def fuse(cands: dict[int, Candidate], k: int | None = None) -> list[tuple[Candidate, float]]:
@@ -220,6 +235,7 @@ def fuse(cands: dict[int, Candidate], k: int | None = None) -> list[tuple[Candid
 
 def collapse(ranked: list[tuple[Candidate, float]], limit: int) -> list[tuple[Candidate, float]]:
     """Overlapping windows from the same minute become one result (the best one)."""
+    ranked = [(c, s) for c, s in ranked if c.real]
     hits = [(c.lecture_id, c.start_s, s) for c, s in ranked]
     return [ranked[g[0]] for g in group_by_time(hits)[:limit]]
 

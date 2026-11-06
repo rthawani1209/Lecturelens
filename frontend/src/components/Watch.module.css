@@ -301,17 +301,19 @@
 .band {
   position: relative;
   display: flex;
-  gap: 2px;
   height: 34px;
+  overflow: hidden; /* a long lecture has hundreds of frames; never wider than the page */
 }
 
 .band > * {
   flex: 1 1 0;
-  min-width: 2px;
+  min-width: 0;
 }
 
 .band button {
-  min-width: 2px;
+  min-width: 0;
+  /* a hairline between cells instead of a gap, so cells can shrink to almost nothing */
+  box-shadow: inset -1px 0 0 var(--bg);
   padding: 0;
   border: 0;
   border-radius: 2px;

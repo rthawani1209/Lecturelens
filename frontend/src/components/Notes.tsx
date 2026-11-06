@@ -45,6 +45,18 @@ export function Notes({
     return () => window.removeEventListener("keydown", onKey);
   }, [notes, time]);
 
+  async function saveEdit(n: Note) {
+    const text = editing?.id === n.id ? editing.text.trim() : "";
+    setEditing(null);
+    if (!text || text === n.text) return;
+    try {
+      const saved = await api.editNote(n.id, text);
+      setNotes((all) => (Array.isArray(all) ? all.map((x) => (x.id === n.id ? saved : x)) : all));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   if (notes === "signed-out") {
     return (
       <section className={styles.panel} aria-label="Your notes">
@@ -78,19 +90,11 @@ export function Notes({
                   autoFocus
                   value={editing.text}
                   onChange={(e) => setEditing({ id: n.id, text: e.target.value })}
-                  onBlur={() => setEditing(null)}
-                  onKeyDown={async (e) => {
+                  // clicking away keeps the edit; only Escape throws it out
+                  onBlur={() => saveEdit(n)}
+                  onKeyDown={(e) => {
                     if (e.key === "Escape") setEditing(null);
-                    if (e.key !== "Enter" || !editing.text.trim()) return;
-                    try {
-                      const saved = await api.editNote(n.id, editing.text.trim());
-                      setNotes((all) =>
-                        Array.isArray(all) ? all.map((x) => (x.id === n.id ? saved : x)) : all,
-                      );
-                      setEditing(null);
-                    } catch (err) {
-                      setError((err as Error).message);
-                    }
+                    if (e.key === "Enter") saveEdit(n);
                   }}
                 />
               ) : (

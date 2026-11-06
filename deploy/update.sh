@@ -24,12 +24,17 @@ if [ "$verdict" != green ]; then
   exit 0
 fi
 
+compose="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
 old=$(git rev-parse HEAD)
 git reset -q --hard "$new"
-if ! docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --remove-orphans; then
-  # e.g. a font download timed out mid-build: go back so the next tick tries again
+# a release can add a model; TF Serving won't start without it
+if ! bash scripts/get_models.sh >/dev/null || ! $compose up -d --build --remove-orphans --wait --wait-timeout 600; then
+  # a failed build, a migration that broke on real data, an api that never got
+  # healthy: put the last good version back up (its images are cached) and let
+  # the next tick try again
   git reset -q --hard "$old"
-  echo "build of ${new:0:7} failed; will retry"
+  $compose up -d --remove-orphans || true
+  echo "deploying ${new:0:7} failed; back on ${old:0:7}"
   exit 1
 fi
 # old images and build cache add up to gigabytes after a few deploys

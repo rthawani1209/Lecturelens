@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     rrf_k: int = 60
     candidates: int = 50
     meaning_floor: float = 0.30  # cosine; see ml/eval/meaning_floor.json
+    visual_floor: float = 1.0  # CLIP cosine for a picture-only match; same file
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

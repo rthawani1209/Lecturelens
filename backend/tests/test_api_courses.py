@@ -55,3 +55,35 @@ def test_lectures_grouped_by_week(client, db):
 def test_weeks_of_a_private_course_look_missing(client, db):
     private = _course(db, public=False)
     assert client.get(f"/courses/{private}/weeks").status_code == 404
+
+
+def test_rename_and_delete_your_course(client, db, sign_in, storage):
+    from fastapi.testclient import TestClient
+
+    from lecturelens.api.main import create_app
+
+    sign_in(client, "ada@example.com")
+    cid = client.post("/courses", json={"title": "Algorithms"}).json()["id"]
+    lid = db.execute(
+        "INSERT INTO lectures (course_id, title, status) VALUES (%s, 'L1', 'ready') RETURNING id",
+        (cid,),
+    ).fetchone()[0]
+    storage.put_file(f"lectures/{lid}/source.mp4", __file__)
+
+    r = client.patch(f"/courses/{cid}", json={"title": " Algorithms II ", "code": "6.046"})
+    assert (r.json()["title"], r.json()["code"]) == ("Algorithms II", "6.046")
+    assert client.patch(f"/courses/{cid}", json={"title": "  "}).status_code == 422
+
+    # someone else can't touch it, and public demo courses can't be changed
+    bob = TestClient(create_app())
+    sign_in(bob, "bob@example.com")
+    assert bob.patch(f"/courses/{cid}", json={"title": "mine"}).status_code == 404
+    assert bob.delete(f"/courses/{cid}").status_code == 404
+    db.execute("UPDATE courses SET public = true WHERE id = %s", (cid,))
+    assert bob.delete(f"/courses/{cid}").status_code == 404
+    db.execute("UPDATE courses SET public = false WHERE id = %s", (cid,))
+
+    assert client.delete(f"/courses/{cid}").status_code == 204
+    assert db.execute("SELECT count(*) FROM lectures").fetchone()[0] == 0
+    assert not storage.exists(f"lectures/{lid}/source.mp4")
+    assert client.delete(f"/courses/{cid}").status_code == 404

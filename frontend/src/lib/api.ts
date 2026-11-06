@@ -184,6 +184,8 @@ export const api = {
   editNote: (noteId: string, text: string) => send<Note>("PATCH", `/notes/${noteId}`, { text }),
   courses: () => get<Course[]>("/courses", { cache: "no-store" }),
   createCourse: (title: string, code: string) => send<Course>("POST", "/courses", { title, code }),
+  renameCourse: (id: string, title: string) => send<Course>("PATCH", `/courses/${id}`, { title }),
+  deleteCourse: (id: string) => send<void>("DELETE", `/courses/${id}`),
   startUpload: (
     courseId: string,
     body: { title: string; filename: string; size: number; week: number | null },

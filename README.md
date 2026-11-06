@@ -122,8 +122,12 @@ rebuilds once a new commit's GitHub checks have all passed. The public site has 
 button and caps uploads per day; both are settings in `deploy/.env`.
 
 Every night at 03:30 the server dumps the database and copies the uploaded files to
-`/var/backups/lecturelens` (7 dumps and 2 file copies are kept). How to restore is at
-the top of `deploy/backup.sh`.
+`/var/backups/lecturelens` (7 dumps and 2 file copies are kept, readable by root
+only). To put one back, replacing what's there:
+
+```bash
+bash /opt/lecturelens/deploy/restore.sh 2026-11-06
+```
 
 Check a running site end to end:
 

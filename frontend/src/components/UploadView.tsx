@@ -67,6 +67,7 @@ export function UploadView() {
 
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [courseId, setCourseId] = useState("");
   const [newCourse, setNewCourse] = useState(false);
   const [courseTitle, setCourseTitle] = useState("");
@@ -97,7 +98,9 @@ export function UploadView() {
         const mine = all.filter((c) => c.mine);
         setCourses(mine);
         const asked = mine.find((c) => c.id === courseParam)?.id;
-        setCourseId((cur) => cur || asked || mine[0]?.id || "");
+        // otherwise the course with the most lectures, not an empty one left by a failed upload
+        const busiest = [...mine].sort((a, b) => b.lecture_count - a.lecture_count)[0]?.id;
+        setCourseId((cur) => cur || asked || busiest || "");
         if (mine.length === 0) setNewCourse(true);
       },
       (e) => setFormError(message(e)),
@@ -251,6 +254,33 @@ export function UploadView() {
   }
 
   const course = courses.find((c) => c.id === courseId);
+
+  async function saveName() {
+    if (!course || !renaming?.trim()) return;
+    try {
+      const saved = await api.renameCourse(course.id, renaming.trim());
+      setCourses((cs) => cs.map((c) => (c.id === saved.id ? saved : c)));
+      setRenaming(null);
+    } catch (e) {
+      setFormError(message(e));
+    }
+  }
+
+  async function removeCourse() {
+    if (!course) return;
+    const n = course.lecture_count;
+    const what = n ? ` and its ${n} lecture${n === 1 ? "" : "s"}` : "";
+    if (!window.confirm(`Delete ${course.title}${what}? This can't be undone.`)) return;
+    try {
+      await api.deleteCourse(course.id);
+      const rest = courses.filter((c) => c.id !== course.id);
+      setCourses(rest);
+      setCourseId(rest[0]?.id ?? "");
+      if (rest.length === 0) setNewCourse(true);
+    } catch (e) {
+      setFormError(message(e));
+    }
+  }
   const pct = sending
     ? Math.round((sending.progress.sent / Math.max(1, sending.progress.total)) * 100)
     : 0;
@@ -287,16 +317,60 @@ export function UploadView() {
             </div>
           ) : (
             <div className={styles.newCourse}>
-              <select id="course" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
-                {courses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.code ? `${c.code} · ${c.title}` : c.title}
-                  </option>
-                ))}
-              </select>
-              <button type="button" className={styles.link} onClick={() => setNewCourse(true)}>
-                New course
-              </button>
+              {renaming !== null ? (
+                <input
+                  aria-label="Course name"
+                  maxLength={200}
+                  autoFocus
+                  value={renaming}
+                  onChange={(e) => setRenaming(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setRenaming(null);
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveName();
+                    }
+                  }}
+                />
+              ) : (
+                <select id="course" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code ? `${c.code} · ${c.title}` : c.title}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {renaming !== null ? (
+                <>
+                  <button type="button" className={styles.link} onClick={saveName}>
+                    Save name
+                  </button>
+                  <button type="button" className={styles.link} onClick={() => setRenaming(null)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className={styles.link} onClick={() => setNewCourse(true)}>
+                    New course
+                  </button>
+                  {course && (
+                    <>
+                      <button
+                        type="button"
+                        className={styles.link}
+                        onClick={() => setRenaming(course.title)}
+                      >
+                        Rename
+                      </button>
+                      <button type="button" className={styles.link} onClick={removeCourse}>
+                        Delete course
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>

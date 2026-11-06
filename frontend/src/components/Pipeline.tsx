@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, type LectureDetail } from "@/lib/api";
+import { ApiError, api, type LectureDetail } from "@/lib/api";
 import styles from "./Upload.module.css";
 
 const ABOUT: Record<string, [string, string]> = {
@@ -24,6 +24,7 @@ export function Pipeline({ id, onDeleted }: { id: string; onDeleted: () => void 
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [retryNote, setRetryNote] = useState<string | null>(null);
 
   useEffect(() => {
     let closed = false;
@@ -44,6 +45,24 @@ export function Pipeline({ id, onDeleted }: { id: string; onDeleted: () => void 
       es.close();
     };
   }, [id, attempt]);
+
+  async function retry() {
+    setBusy(true);
+    setRetryNote(null);
+    try {
+      setLec(await api.retry(id));
+      setAttempt((n) => n + 1);
+    } catch (e) {
+      // 409 on a lecture that's queued or processing: it's still moving
+      setRetryNote(
+        e instanceof ApiError && e.status === 409
+          ? "It's still being worked on. Give it a few more minutes."
+          : (e as Error).message,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (error) return <p className={styles.error}>{error}</p>;
   if (!lec) return <div className={styles.pipeSkeleton} aria-busy="true" />;
@@ -109,20 +128,7 @@ export function Pipeline({ id, onDeleted }: { id: string; onDeleted: () => void 
         <div className={styles.failBox} role="alert">
           <p>{firstError ?? "Processing stopped."}</p>
           <div>
-            <button
-              type="button"
-              className={styles.primary}
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  setLec(await api.retry(id));
-                  setAttempt((n) => n + 1);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
+            <button type="button" className={styles.primary} disabled={busy} onClick={retry}>
               Try again
             </button>
             {confirming ? (
@@ -147,6 +153,21 @@ export function Pipeline({ id, onDeleted }: { id: string; onDeleted: () => void 
             )}
           </div>
         </div>
+      )}
+
+      {(lec.status === "queued" || lec.status === "processing") && (
+        // a lecture with no progress for an hour can be put back in line
+        <p className={`mono ${styles.now}`}>
+          Stuck?{" "}
+          <button type="button" className={styles.link} disabled={busy} onClick={retry}>
+            Try again
+          </button>
+        </p>
+      )}
+      {retryNote && (
+        <p className={styles.error} role="status">
+          {retryNote}
+        </p>
       )}
 
       {lec.status === "ready" && (

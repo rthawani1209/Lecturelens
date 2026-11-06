@@ -1,4 +1,5 @@
 import { WeekGrid } from "@/components/WeekGrid";
+import { YourCourses } from "@/components/YourCourses";
 import { api } from "@/lib/api";
 import styles from "../page.module.css";
 
@@ -20,6 +21,7 @@ export default async function WatchIndex() {
           Can&apos;t reach the LectureLens API right now.
         </p>
       )}
+      <YourCourses />
       {courses?.map((c, i) => (
         <section key={c.id} className={styles.course} aria-label={c.title}>
           <div className={styles.courseHead}>

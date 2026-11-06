@@ -62,6 +62,14 @@ export function shortTitle(title: string, pos: number): string {
 
 /** Only same-site paths, so ?next= can't bounce people to another site. */
 export function safeNext(next: string | null): string {
-  // a backslash counts as a slash in browsers, so /\evil.com is the same as //evil.com
-  return next && /^\/(?![/\\])/.test(next) ? next : "/";
+  // browsers drop tabs and newlines from URLs and read a backslash as a slash, so
+  // "/\t/evil.com" means "//evil.com". Refuse those, then ask the URL parser.
+  if (!next || !next.startsWith("/") || /[\x00-\x1f\x7f\\]/.test(next)) return "/";
+  try {
+    const base = "https://lecturelens.invalid";
+    const url = new URL(next, base);
+    return url.origin === base && !next.startsWith("//") ? next : "/";
+  } catch {
+    return "/";
+  }
 }

@@ -91,3 +91,43 @@ def test_a_lecture_deleted_mid_processing_isnt_retried(owned, db, storage, monke
     result = process_lecture.apply(args=[str(lid)])
     assert result.successful()  # no retry, no error
     assert not storage.exists(f"lectures/{lid}/frames/1.jpg")
+
+
+def test_a_lecture_stuck_for_an_hour_can_be_retried_once(owned, db):
+    client, lid, queued = owned
+    db.execute("UPDATE lectures SET status = 'processing' WHERE id = %s", (lid,))
+    db.execute(
+        "INSERT INTO jobs (lecture_id, stage, status) VALUES (%s, 'transcribe', 'running')", (lid,)
+    )
+    assert client.post(f"/lectures/{lid}/retry").status_code == 409  # still moving
+    db.execute("UPDATE lectures SET created_at = now() - interval '2 hours' WHERE id = %s", (lid,))
+    db.execute("UPDATE jobs SET updated_at = now() - interval '2 hours'")
+    assert client.post(f"/lectures/{lid}/retry").json()["status"] == "queued"
+    assert client.post(f"/lectures/{lid}/retry").status_code == 409  # a second click
+    assert queued == [lid]
+
+
+def test_worker_start_requeues_unfinished_lectures(owned, db, monkeypatch):
+    from lecturelens import worker
+
+    _, lid, _ = owned
+    sent = []
+    monkeypatch.setattr(worker.process_lecture, "delay", sent.append)
+    worker.requeue_interrupted()
+    assert sent == [str(lid)]
+
+
+def test_one_run_per_lecture_at_a_time(owned, monkeypatch):
+    from lecturelens import worker
+
+    _, lid, _ = owned
+    runs = []
+
+    def pipeline(x):
+        # the same lecture queued again while this run holds it
+        assert process_lecture.apply(args=[str(lid)]).successful()
+        runs.append(x)
+
+    monkeypatch.setattr(worker, "run_pipeline", pipeline)
+    process_lecture.apply(args=[str(lid)])
+    assert runs == [lid]

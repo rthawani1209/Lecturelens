@@ -43,7 +43,7 @@ def probe(path: Path) -> dict:
             "-v",
             "error",
             "-show_entries",
-            "format=duration:stream=codec_name,codec_type",
+            "format=format_name,duration:stream=codec_name,codec_type",
             "-of",
             "default=nw=1",
             str(path),
@@ -54,7 +54,9 @@ def probe(path: Path) -> dict:
     for name, kind in streams:
         first.setdefault(kind, name)
     dur = re.search(r"duration=([\d.]+)", out)
+    fmt = re.search(r"format_name=([\w,]+)", out)
     return {
+        "format": fmt.group(1) if fmt else "",
         "duration_s": float(dur.group(1)) if dur else None,
         "has_video": "video" in first,
         "has_audio": "audio" in first,
@@ -66,6 +68,16 @@ def probe(path: Path) -> dict:
 # Containers every current browser plays. Anything else (mkv, mostly) gets its
 # streams copied into one of these, which takes seconds and doesn't re-encode.
 BROWSER_CONTAINERS = {".mp4", ".m4v", ".mov", ".webm"}
+
+
+def plays_as_is(ext: str, info: dict) -> bool:
+    """Whether the stored file can go to the browser untouched. Goes by what ffprobe
+    found inside, so an mkv someone renamed to .mp4 still gets remuxed."""
+    if ext not in BROWSER_CONTAINERS:
+        return False
+    if ext == ".webm":
+        return "webm" in info["format"] and info["video_codec"] in {"vp8", "vp9", "av1"}
+    return "mp4" in info["format"].split(",")
 
 
 def browser_container(info: dict) -> tuple[str, bool] | None:

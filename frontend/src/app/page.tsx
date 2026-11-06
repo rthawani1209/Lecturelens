@@ -1,5 +1,6 @@
 import { HomeSearch } from "@/components/HomeSearch";
 import { WeekGrid } from "@/components/WeekGrid";
+import { YourCourses } from "@/components/YourCourses";
 import { api, type Course, type Week } from "@/lib/api";
 import styles from "./page.module.css";
 
@@ -55,6 +56,7 @@ export default async function Home() {
         </p>
       )}
 
+      <YourCourses />
       {data?.courses.map((c) => (
         <section key={c.id} className={styles.course} aria-labelledby={`course-${c.id}`}>
           <div className={styles.courseHead}>

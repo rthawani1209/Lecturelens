@@ -36,8 +36,9 @@ describe("highlight", () => {
 describe("safeNext", () => {
   it("keeps same-site paths and drops everything else", () => {
     expect(safeNext("/study?lecture=1")).toBe("/study?lecture=1");
-    for (const bad of ["//evil.com", "/\\evil.com", "https://evil.com", "evil", "", null]) {
-      expect(safeNext(bad)).toBe("/");
+    const bad = ["//evil.com", "/\\evil.com", "/\t/evil.com", "/\n/evil.com", "https://evil.com"];
+    for (const b of [...bad, "evil", "", null]) {
+      expect(safeNext(b)).toBe("/");
     }
   });
 });

@@ -75,6 +75,9 @@ def get_llm() -> LLM | None:
 def guard(conn, user_id: UUID) -> None:
     """Raise 429 if this user (or the whole site) has used its allowance."""
     s = get_settings()
+    # one call at a time per user, until the caller's transaction (and its record())
+    # commits; otherwise a burst all reads the same "under the limit"
+    conn.execute("SELECT pg_advisory_xact_lock(hashtext('ai:' || %s))", (str(user_id),))
     row = conn.execute(
         """
         SELECT

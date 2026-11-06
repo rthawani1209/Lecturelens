@@ -37,12 +37,40 @@ async def lifespan(app: FastAPI):
     yield
 
 
+class SecurityHeaders:
+    """The API only returns data, never pages, so nothing it sends should be sniffed
+    into HTML or framed. Plain ASGI so streamed video and progress events pass
+    straight through."""
+
+    HEADERS = [
+        (b"x-content-type-options", b"nosniff"),
+        (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'"),
+        (b"referrer-policy", b"same-origin"),
+    ]
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["path"].startswith(("/docs", "/openapi")):
+            return await self.app(scope, receive, send)
+
+        async def with_headers(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = [*message.get("headers", []), *self.HEADERS]
+            await send(message)
+
+        await self.app(scope, receive, with_headers)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     if settings.cookie_secure and settings.secret_key == "dev-only-not-secret":
         # https means a real deployment; the default key is in this public repo
         raise RuntimeError("set SECRET_KEY to a long random value")
-    app = FastAPI(title="LectureLens API", version=__version__, lifespan=lifespan)
+    # the interactive docs are for development; production doesn't advertise every route
+    docs = {} if not settings.cookie_secure else {"docs_url": None, "redoc_url": None}
+    app = FastAPI(title="LectureLens API", version=__version__, lifespan=lifespan, **docs)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -51,6 +79,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         expose_headers=["Range"],  # resumable uploads report progress in it
     )
+
+    app.add_middleware(SecurityHeaders)
 
     # text with a NUL byte or half an emoji (lone surrogate) can't be stored in
     # Postgres; that's bad input, not a server error

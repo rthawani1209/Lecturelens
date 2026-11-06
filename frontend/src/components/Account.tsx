@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, type Me } from "@/lib/api";
 import styles from "./TopBar.module.css";
@@ -21,7 +21,6 @@ export function Account() {
   const [open, setOpen] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
   const path = usePathname();
-  const router = useRouter();
 
   useEffect(() => {
     api
@@ -76,9 +75,9 @@ export function Account() {
             role="menuitem"
             onClick={async () => {
               await api.logout().catch(() => undefined);
-              setMe(null);
-              setOpen(false);
-              router.refresh();
+              // a full reload, so notes, private courses and decks already on
+              // screen go with the session instead of lingering
+              window.location.reload();
             }}
           >
             Sign out

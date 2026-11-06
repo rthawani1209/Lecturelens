@@ -181,3 +181,46 @@ def test_real_whisper_and_course_vocabulary(lecture_fixture, tmp_path):
     tuned = heard(["Dijkstra", "graph search", "binary heap"])
     for term in ("dijkstra", "graph search", "binary heap"):
         assert term in tuned
+
+
+def test_wav_is_removed_after_transcribing(db, lecture, storage, fake_whisper, models_env):
+    lid, _ = lecture
+    stages.run_pipeline(lid, only=["probe", "audio", "transcribe"])
+    assert not storage.exists(f"lectures/{lid}/audio.wav")
+    # running transcribe again by hand makes the audio again instead of losing the transcript
+    db.execute("UPDATE jobs SET status = 'pending' WHERE lecture_id = %s", (lid,))
+    stages.run_stage(lid, "transcribe")
+    assert _count(db, "transcript_lines", lid) > 0
+
+
+def test_refuses_videos_over_the_length_limit(db, lecture, monkeypatch):
+    from lecturelens.config import get_settings
+
+    lid, _ = lecture
+    monkeypatch.setenv("MAX_DURATION_S", "5")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(Exception, match="longer than"):
+            stages.run_stage(lid, "probe")
+    finally:
+        get_settings.cache_clear()
+
+
+def test_an_mkv_renamed_to_mp4_is_still_made_playable(
+    db, lecture, lecture_fixture, storage, tmp_path
+):
+    import subprocess
+
+    from lecturelens.pipeline.media import probe
+
+    lid, _ = lecture
+    mkv = tmp_path / "renamed.mkv"
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(lecture_fixture[0]), "-c", "copy", str(mkv)],
+        check=True,
+    )
+    key = f"lectures/{lid}/source.mp4"
+    storage.put_file(key, mkv)
+    db.execute("UPDATE lectures SET storage_key = %s WHERE id = %s", (key, lid))
+    stages.run_stage(lid, "probe")
+    assert "mp4" in probe(storage.path(key))["format"].split(",")

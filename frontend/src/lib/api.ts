@@ -181,6 +181,7 @@ export const api = {
   addNote: (id: string, t_s: number, text: string) =>
     send<Note>("POST", `/lectures/${id}/notes`, { t_s, text }),
   deleteNote: (noteId: string) => send<void>("DELETE", `/notes/${noteId}`),
+  editNote: (noteId: string, text: string) => send<Note>("PATCH", `/notes/${noteId}`, { text }),
   courses: () => get<Course[]>("/courses", { cache: "no-store" }),
   createCourse: (title: string, code: string) => send<Course>("POST", "/courses", { title, code }),
   startUpload: (

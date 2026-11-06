@@ -19,7 +19,10 @@ def _course(db, *, public: bool) -> uuid.UUID:
 
 
 def test_health(client):
-    assert client.get("/health").json() == {"status": "ok"}
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    # no TF Serving in tests: the models say so instead of failing the check
+    assert set(body["models"]) == {"tagger", "reranker"}
 
 
 def test_public_courses_listed_with_counts(client, db):

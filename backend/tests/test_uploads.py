@@ -153,6 +153,8 @@ def test_non_video_is_refused_on_the_first_chunk(setup, db, queued):
     assert "isn't a video" in r.json()["detail"]
     assert db.execute("SELECT count(*) FROM lectures").fetchone()[0] == 0
     assert queued == []
+    # and it doesn't use up one of the day's uploads
+    assert db.execute("SELECT count(*) FROM lecture_adds").fetchone()[0] == 0
 
 
 def test_upload_rules(setup, sign_in):
@@ -204,6 +206,7 @@ def test_youtube_import(setup, db, queued, monkeypatch, lecture_fixture):
     lec = r.json()
     assert lec["source_url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     assert lec["status"] == "queued" and queued == [uuid.UUID(lec["id"])]
+    assert lec["title"] == "YouTube video"  # not a blank row while it downloads
 
     video, _ = lecture_fixture
 
@@ -238,8 +241,14 @@ def test_progress_stream(setup, db):
         last = await anext(events)
         assert '"status": "ready"' in last and '"progress": 1.0' in last
         assert await anext(events, None) is None  # stream ends once the lecture is ready
+        db.execute("DELETE FROM lectures WHERE id = %s", (lid,))
+        gone = lecture_routes.progress_events(uuid.UUID(lid), poll_s=0.01)
+        assert (await anext(gone)).startswith("event: gone")
+        assert await anext(gone, None) is None
 
     asyncio.run(read())
+    lid = _start(client, course, b"x" * 10)["lecture_id"]
+    db.execute("UPDATE lectures SET status = 'ready' WHERE id = %s", (lid,))
 
     # over HTTP it's an event stream, and other people can't open it
     r = client.get(f"/lectures/{lid}/events")
@@ -340,3 +349,28 @@ def test_per_address_cap_covers_every_account(setup, sign_in, monkeypatch):
         f"/courses/{other}/lectures", json={"title": "x", "filename": "x.mp4", "size": 100}
     )
     assert r.status_code == 429
+
+
+def test_abandoned_uploads_are_cleared(setup, db):
+    client, course = setup
+    old = _start(client, course, b"x" * 10)["lecture_id"]
+    db.execute("UPDATE lectures SET created_at = now() - interval '2 days'")
+    _start(client, course, b"y" * 10)
+    ids = [str(r[0]) for r in db.execute("SELECT id FROM lectures")]
+    assert old not in ids and len(ids) == 1
+
+
+def test_wrong_chunk_is_answered_before_its_body_is_read(setup, monkeypatch):
+    from lecturelens.api.routes import uploads
+
+    client, course = setup
+    data = MP4_HEAD + b"z" * 50_000
+    up = _start(client, course, data)
+    assert _put(client, up["upload_url"], data, 0, 9_999, len(data)).status_code == 308
+
+    def no_store(*a):
+        raise AssertionError("read the body of a chunk it can't use")
+
+    monkeypatch.setattr(uploads, "_store", no_store)
+    r = _put(client, up["upload_url"], data, 20_000, 29_999, len(data))
+    assert r.status_code == 308 and r.headers["range"] == "bytes=0-9999"

@@ -13,7 +13,7 @@ from ... import access, queue, signing
 from ...config import get_settings
 from ...db import connection
 from ...pipeline.fetch import canonical_url, youtube_id
-from ...pipeline.stages import STAGES
+from ...pipeline.stages import IMPORT_TITLE, STAGES
 from ...storage import get_storage
 from ..client_ip import client_ip
 from ..deps import current_user, require_user
@@ -98,18 +98,18 @@ def start_upload(
     with connection() as conn, conn.transaction():
         if access.course(conn, user["id"], course_id, write=True) is None:
             raise HTTPException(404, "course not found")
-        _daily_limit(conn, user["id"], client_ip(request))
         lid = conn.execute(
             "INSERT INTO lectures (course_id, title, week, position, status, created_by)"
             " VALUES (%s, %s, %s, %s, 'uploading', %s) RETURNING id",
             (course_id, body.title.strip(), body.week, _next_position(conn, course_id), user["id"]),
         ).fetchone()["id"]
+        _daily_limit(conn, user["id"], client_ip(request), lid)  # a 429 rolls the insert back
         uid = conn.execute(
             "INSERT INTO uploads (lecture_id, user_id, filename, size) VALUES (%s, %s, %s, %s)"
             " RETURNING id",
             (lid, user["id"], body.filename, body.size),
         ).fetchone()["id"]
-    uploads_routes.sweep_parts(UPLOAD_URL_TTL_S)
+    sweep_abandoned()
     return {"lecture_id": lid, "upload_url": upload_url(uid), "chunk_size": s.upload_chunk_bytes}
 
 
@@ -123,25 +123,37 @@ def import_lecture(
     with connection() as conn, conn.transaction():
         if access.course(conn, user["id"], course_id, write=True) is None:
             raise HTTPException(404, "course not found")
-        _daily_limit(conn, user["id"], client_ip(request))
-        # empty title: the fetch stage fills in the video's own title
+        # no title: a placeholder until the fetch stage fills in the video's own
         lid = conn.execute(
             "INSERT INTO lectures (course_id, title, week, position, status, source_url,"
             " created_by) VALUES (%s, %s, %s, %s, 'queued', %s, %s) RETURNING id",
             (
                 course_id,
-                body.title.strip(),
+                body.title.strip() or IMPORT_TITLE,
                 body.week,
                 _next_position(conn, course_id),
                 canonical_url(vid),
                 user["id"],
             ),
         ).fetchone()["id"]
+        _daily_limit(conn, user["id"], client_ip(request), lid)
     queue.enqueue(lid)
     return _detail(lid)
 
 
-def _daily_limit(conn, user_id, ip: str) -> None:
+def sweep_abandoned() -> None:
+    """Uploads nobody can finish any more: their link has expired. Drops the
+    half-sent files and the lectures that were waiting on them."""
+    with connection() as conn:
+        conn.execute(
+            "DELETE FROM lectures WHERE status = 'uploading'"
+            " AND created_at < now() - make_interval(secs => %s)",
+            (UPLOAD_URL_TTL_S,),
+        )
+    uploads_routes.sweep_parts(UPLOAD_URL_TTL_S)
+
+
+def _daily_limit(conn, user_id, ip: str, lecture_id: UUID) -> None:
     """Count this addition against today's caps, or refuse it with a 429.
 
     Runs inside the caller's transaction. The advisory lock makes concurrent
@@ -180,16 +192,21 @@ def _daily_limit(conn, user_id, ip: str) -> None:
             raise HTTPException(
                 429, "You've added as many lectures today as this demo allows. Try again tomorrow."
             )
-    conn.execute("INSERT INTO lecture_adds (user_id, ip) VALUES (%s, %s)", (user_id, ip))
+    conn.execute(
+        "INSERT INTO lecture_adds (user_id, ip, lecture_id) VALUES (%s, %s, %s)",
+        (user_id, ip, lecture_id),
+    )
 
 
-def _detail(lecture_id: UUID) -> dict:
+def _detail(lecture_id: UUID) -> dict | None:
     with connection() as conn:
         lec = conn.execute(
             "SELECT id, course_id, title, week, duration_s, status, source_url FROM lectures"
             " WHERE id = %s",
             (lecture_id,),
         ).fetchone()
+        if lec is None:
+            return None
         rows = {
             r["stage"]: r
             for r in conn.execute(
@@ -221,6 +238,9 @@ def friendly_error(stage: str, error: str) -> str:
             return "This file has sound but no picture. Upload the video itself."
         if "convert it to MP4" in error:
             return "Browsers can't play this format. Convert it to MP4 (H.264) and upload again."
+        if "longer than" in error:
+            hours = get_settings().max_duration_s // 3600
+            return f"This video is longer than {hours} hours, the most this site processes."
         return "This file isn't a playable video."
     return f"Something went wrong while processing ({stage}). Try again."
 
@@ -260,6 +280,9 @@ async def progress_events(
     last, last_sent, started = None, time.monotonic(), time.monotonic()
     while time.monotonic() - started < max_s:
         detail = await asyncio.to_thread(_detail, lecture_id)
+        if detail is None:  # deleted while someone watched it
+            yield "event: gone\ndata: {}\n\n"
+            return
         snapshot = json.dumps(detail, default=str)
         if snapshot != last:
             yield f"event: progress\ndata: {snapshot}\n\n"
@@ -283,17 +306,30 @@ def _writable(lecture_id: UUID, user: dict) -> dict:
 
 @router.post("/lectures/{lecture_id}/retry", response_model=LectureDetail)
 def retry_lecture(lecture_id: UUID, user: dict = Depends(require_user)) -> dict:
-    """Run a failed lecture again. Stages that finished are skipped."""
-    lec = _writable(lecture_id, user)
-    if lec["status"] != "failed":
-        raise HTTPException(409, "only failed lectures can be retried")
+    """Run a failed lecture again, or one that's been stuck for an hour. Stages that
+    finished are skipped."""
+    _writable(lecture_id, user)
     with connection() as conn:
+        # one statement, so two clicks at once queue it once
+        row = conn.execute(
+            """
+            UPDATE lectures l SET status = 'queued' WHERE id = %s AND (
+                   status = 'failed'
+                OR (status IN ('queued', 'processing')
+                    AND l.created_at < now() - interval '1 hour'
+                    AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.lecture_id = l.id
+                                       AND j.updated_at > now() - interval '1 hour')))
+            RETURNING id
+            """,
+            (lecture_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(409, "Only failed or stuck lectures can be retried.")
         conn.execute(
-            "UPDATE jobs SET status = 'pending', error = NULL, progress = 0"
-            " WHERE lecture_id = %s AND status = 'failed'",
+            "UPDATE jobs SET status = 'pending', error = NULL, progress = 0, updated_at = now()"
+            " WHERE lecture_id = %s AND status IN ('failed', 'running')",
             (lecture_id,),
         )
-        conn.execute("UPDATE lectures SET status = 'queued' WHERE id = %s", (lecture_id,))
     queue.enqueue(lecture_id)
     return _detail(lecture_id)
 

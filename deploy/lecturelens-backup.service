@@ -1,0 +1,7 @@
+[Unit]
+Description=Back up the LectureLens database and files
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/lecturelens/deploy/backup.sh

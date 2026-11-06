@@ -25,6 +25,20 @@ export function ScopeBand({
 }) {
   const present = Object.keys(TAG_COLORS).filter((t) => frames.some((f) => f.tag === t));
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((p) => timecode(p * length));
+  // one tab stop for the band (the frame on screen now); arrow keys move between frames
+  const current = Math.max(
+    0,
+    frames.findLastIndex((f) => f.t_s <= time),
+  );
+  const moveFocus = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1, Home: -Infinity, End: Infinity }[e.key];
+    if (step === undefined) return;
+    e.preventDefault();
+    const cells = [...e.currentTarget.querySelectorAll("button")];
+    const at = cells.indexOf(document.activeElement as HTMLButtonElement);
+    const next = Math.min(cells.length - 1, Math.max(0, (at < 0 ? current : at) + step));
+    cells[next]?.focus();
+  };
   return (
     <section className={styles.panel} aria-label="What's on screen">
       <div className={styles.panelHead}>
@@ -38,13 +52,20 @@ export function ScopeBand({
           ))}
         </ul>
       </div>
-      <div className={styles.band}>
+      <div className={styles.band} onKeyDown={moveFocus}>
+        {/* each cell is as wide as the time its frame stayed on screen, so the band
+            lines up with the playhead and the ticks below */}
+        {frames[0]?.t_s > 0 && <span style={{ flexGrow: frames[0].t_s }} aria-hidden="true" />}
         {frames.map((f, i) => (
           <button
             key={f.t_s}
             type="button"
-            tabIndex={i === 0 ? 0 : -1}
-            style={{ background: TAG_COLORS[f.tag ?? "other"], opacity: f.t_s <= time ? 1 : 0.45 }}
+            tabIndex={i === current ? 0 : -1}
+            style={{
+              background: TAG_COLORS[f.tag ?? "other"],
+              opacity: f.t_s <= time ? 1 : 0.45,
+              flexGrow: Math.max((frames[i + 1]?.t_s ?? length) - f.t_s, 0.5),
+            }}
             onClick={() => onSeek(f.t_s)}
             aria-label={`${f.tag ?? "frame"} at ${timecode(f.t_s)}`}
           />

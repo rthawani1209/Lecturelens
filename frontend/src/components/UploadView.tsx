@@ -63,6 +63,7 @@ export function UploadView() {
   const router = useRouter();
   const params = useSearchParams();
   const lectureParam = params.get("lecture");
+  const courseParam = params.get("course");
 
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -95,12 +96,13 @@ export function UploadView() {
       (all) => {
         const mine = all.filter((c) => c.mine);
         setCourses(mine);
-        setCourseId((cur) => cur || mine[0]?.id || "");
+        const asked = mine.find((c) => c.id === courseParam)?.id;
+        setCourseId((cur) => cur || asked || mine[0]?.id || "");
         if (mine.length === 0) setNewCourse(true);
       },
       (e) => setFormError(message(e)),
     );
-  }, [me]);
+  }, [me, courseParam]);
 
   // stop sending if the user navigates away; the server keeps what it got
   useEffect(() => () => abort.current?.abort(), []);
@@ -256,8 +258,7 @@ export function UploadView() {
   return (
     <main className={styles.page}>
       <p className={`mono label ${styles.kicker}`}>
-        {course ? `Add to ${course.code || course.title}` : "Add to a course"} · private to your
-        group until you publish
+        {course ? `Add to ${course.code || course.title}` : "Add to a course"} · only you can see it
       </p>
       <h1 className={`display ${styles.title}`}>Add a lecture</h1>
 

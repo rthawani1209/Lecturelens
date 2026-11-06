@@ -23,11 +23,11 @@ from .chunk import Sentence, windows
 from .dedup import dedupe, dhash, signature, to_signed
 from .fetch import download_youtube
 from .media import (
-    BROWSER_CONTAINERS,
     MediaError,
     browser_container,
     extract_audio,
     keyframes,
+    plays_as_is,
     probe,
     remux,
 )
@@ -37,6 +37,10 @@ from .transcribe import transcribe
 log = logging.getLogger(__name__)
 
 Progress = Callable[[float], None]
+
+
+# what an import with no title is called until the download brings the real one
+IMPORT_TITLE = "YouTube video"
 
 
 def _key(lecture_id: UUID, name: str) -> str:
@@ -74,8 +78,8 @@ def stage_fetch(lecture_id: UUID, work: Path, report: Progress) -> None:
     with connection() as conn:
         conn.execute(
             "UPDATE lectures SET storage_key = %s,"
-            " title = CASE WHEN title = '' THEN %s ELSE title END WHERE id = %s",
-            (key, title[:200] or "Untitled lecture", lecture_id),
+            " title = CASE WHEN title IN ('', %s) THEN %s ELSE title END WHERE id = %s",
+            (key, IMPORT_TITLE, title[:200] or "Untitled lecture", lecture_id),
         )
 
 
@@ -85,10 +89,13 @@ def stage_probe(lecture_id: UUID, work: Path, report: Progress) -> None:
     info = probe(video)
     if not info["has_video"]:
         raise MediaError("file has no video track")
+    limit = get_settings().max_duration_s
+    if info["duration_s"] and info["duration_s"] > limit:
+        raise MediaError(f"video is longer than {limit // 3600} hours")
     # no audio is fine (a silent screen recording): search and study use the slides
     old_key = lecture["storage_key"]
     ext = PurePosixPath(old_key).suffix.lower()
-    if ext not in BROWSER_CONTAINERS:
+    if not plays_as_is(ext, info):
         target = browser_container(info)
         if target is None:
             raise MediaError(
@@ -103,7 +110,9 @@ def stage_probe(lecture_id: UUID, work: Path, report: Progress) -> None:
             conn.execute(
                 "UPDATE lectures SET storage_key = %s WHERE id = %s", (new_key, lecture_id)
             )
-        get_storage().delete_prefix(old_key)
+        # (a renamed mkv lands on its own key; demo sources are shared and stay)
+        if old_key != new_key and old_key.startswith(_key(lecture_id, "")):
+            get_storage().delete_prefix(old_key)
     with connection() as conn:
         conn.execute(
             "UPDATE lectures SET duration_s = %s WHERE id = %s", (info["duration_s"], lecture_id)
@@ -118,12 +127,22 @@ def stage_audio(lecture_id: UUID, work: Path, report: Progress) -> None:
     get_storage().put_file(_key(lecture_id, "audio.wav"), wav)
 
 
+def _audio(lecture: dict, work: Path) -> Path | None:
+    """The lecture's wav, made again from the video if it was already cleaned up
+    (when transcribe is rerun by hand). None for a silent video."""
+    storage, key = get_storage(), _key(lecture["id"], "audio.wav")
+    if storage.exists(key):
+        return storage.get_file(key, work / "audio.wav")
+    video = _video(lecture, work)
+    return extract_audio(video, work / "audio.wav") if probe(video)["has_audio"] else None
+
+
 def stage_transcribe(lecture_id: UUID, work: Path, report: Progress) -> None:
     lecture = _lecture(lecture_id)
-    if not get_storage().exists(_key(lecture_id, "audio.wav")):
+    wav = _audio(lecture, work)
+    if wav is None:
         save_transcript(lecture_id, [])  # silent video
         return
-    wav = get_storage().get_file(_key(lecture_id, "audio.wav"), work / "audio.wav")
     with connection() as conn:
         terms = [
             r["term"]
@@ -134,6 +153,8 @@ def stage_transcribe(lecture_id: UUID, work: Path, report: Progress) -> None:
     model_dir = Path(get_settings().models_dir) / "whisper"
     sentences = transcribe(wav, model_dir, terms, on_progress=report)
     save_transcript(lecture_id, sentences)
+    # 16 kHz wav is ~115 MB an hour and nothing reads it after this
+    get_storage().delete_prefix(_key(lecture_id, "audio.wav"))
 
 
 def save_transcript(lecture_id: UUID, sentences: list[Sentence]) -> None:

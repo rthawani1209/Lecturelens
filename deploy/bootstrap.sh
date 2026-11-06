@@ -62,7 +62,9 @@ for lec in json.load(open(sys.argv[1]))["lectures"]:
     if lec.get("captions"):
         print(lec["captions"])
 PY
-    [ -s "$out/$f" ] || curl -fsSL --retry 3 -o "$out/$f" "$releases/$tag/$f" || echo "skipped $f"
+    # to a .part file first, so an interrupted run re-downloads instead of keeping half a video
+    [ -s "$out/$f" ] || { curl -fsSL --retry 3 -o "$out/$f.part" "$releases/$tag/$f" &&
+      mv "$out/$f.part" "$out/$f"; } || echo "skipped $f"
   done
 }
 fetch_course 6.006 ocw-6.006-s20
@@ -72,13 +74,15 @@ fetch_course 18.06 ocw-18.06
 compose="docker compose -f deploy/docker-compose.yml --env-file $env_file"
 $compose up -d --build
 
-for course in 6.006 6.100L 18.06; do
-  $compose exec -T worker python /scripts/seed_demo.py "/ocw/$course" --queue
-done
-
-cp deploy/lecturelens-update.service deploy/lecturelens-update.timer /etc/systemd/system/
+# updates and backups first, so they're on even if seeding below goes wrong
+cp deploy/lecturelens-*.service deploy/lecturelens-*.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now lecturelens-update.timer
+systemctl enable --now lecturelens-update.timer lecturelens-backup.timer
+
+for course in 6.006 6.100L 18.06; do
+  $compose exec -T worker python /scripts/seed_demo.py "/ocw/$course" --queue ||
+    echo "couldn't seed $course; run bootstrap.sh again to retry"
+done
 
 echo "LectureLens is starting at https://$(grep ^SITE_ADDRESS "$env_file" | cut -d= -f2)"
 echo "Lectures are processing in the background: $compose logs -f worker"

@@ -61,7 +61,10 @@ over sentence vectors (meaning), full-text over slide OCR (text on screen), and 
 the re-ranker, and collapsed into moments with a jump time. Meaning-only is the
 default because it scored best on validation; `ml/rerank/gate.py` fails CI if the
 default ever falls below a single retriever. The API loads the ONNX models in the
-background at startup, so the first search isn't the slow one.
+background at startup, so the first search isn't the slow one. Meaning search always
+has a nearest sentence, even for gibberish, so matches under a cosine of 0.30 are
+dropped: no relevant hit in any of the three courses' labeled questions scores below
+that, and most off-topic queries never reach it (`ml/eval/meaning_floor.json`).
 
 ## Watching
 
@@ -106,4 +109,11 @@ press "Try it without an account" to get a throwaway account of their own, and
 uploads are capped per account and per day so a public demo can't be run up. A
 systemd timer pulls `main` every 15 minutes and rebuilds once that commit's checks pass, and the Deploy check
 workflow starts this same stack on a fresh machine and runs `deploy/smoke.py` against
-it whenever the backend or the deploy files change.
+it whenever the backend or the deploy files change. Smoke fails unless TF Serving
+reports both models available, since the site would otherwise fall back to NumPy
+without saying so.
+
+If the worker is killed mid-lecture (a deploy, a crash), it puts every unfinished
+lecture back in the queue when it starts again, and a Postgres lock keeps one lecture
+from running twice. Redis keeps its queue on disk. A nightly timer backs up the
+database and the uploaded files (`deploy/backup.sh`).

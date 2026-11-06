@@ -305,9 +305,13 @@
   height: 34px;
 }
 
+.band > * {
+  flex: 1 1 0;
+  min-width: 2px;
+}
+
 .band button {
-  flex: 1;
-  min-width: 0;
+  min-width: 2px;
   padding: 0;
   border: 0;
   border-radius: 2px;
@@ -316,6 +320,11 @@
 
 .band button:hover {
   outline: 1px solid var(--accent);
+}
+
+.band button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .bandHead {
@@ -377,6 +386,12 @@
 }
 
 /* transcript */
+.find:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .find {
   display: flex;
   align-items: center;
@@ -571,8 +586,42 @@
 
   .caption {
     bottom: auto;
-    /* just above the bottom of the video: page gutters are 16px at this width */
-    top: calc((100vw - 32px) * 9 / 16 - 48px);
+    /* sits on the bottom edge of the video (page gutters are 16px at this width) and
+       grows upward, so a two-line caption never runs into the controls */
+    top: calc((100vw - 32px) * 9 / 16 - 8px);
+    transform: translate(-50%, -100%);
     max-width: 92%;
+    font-size: 13px;
   }
+}
+
+.noteText,
+.noteEdit {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.noteText {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+.noteText:hover,
+.noteText:focus-visible {
+  color: var(--accent);
+}
+
+.noteEdit {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
 }

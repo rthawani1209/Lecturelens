@@ -78,8 +78,12 @@ def test_notes_are_private_to_their_writer(ready, client, sign_in):
     sign_in(client, "bob@example.com")
     assert client.get(f"/lectures/{lid}/notes").json() == []
     assert client.delete(f"/notes/{note['id']}").status_code == 404
+    assert client.patch(f"/notes/{note['id']}", json={"text": "mine now"}).status_code == 404
 
     client.post("/auth/logout")
     sign_in(client, "ada@example.com")
+    edited = client.patch(f"/notes/{note['id']}", json={"text": " relax every edge "}).json()
+    assert (edited["text"], edited["t_s"]) == ("relax every edge", 12.5)
+    assert client.patch(f"/notes/{note['id']}", json={"text": "  "}).status_code == 422
     assert client.delete(f"/notes/{note['id']}").status_code == 204
     assert client.get(f"/lectures/{lid}/notes").json() == []

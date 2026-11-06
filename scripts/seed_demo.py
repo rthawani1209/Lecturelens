@@ -170,6 +170,10 @@ def main() -> None:
     for lec in manifest["lectures"]:
         if args.only and lec["number"] not in args.only:
             continue
+        if not (args.folder / lec["video"]).is_file():
+            # a download that failed; the next bootstrap run fetches it and seeds it then
+            logging.warning("skipping lecture %s: %s is missing", lec["number"], lec["video"])
+            continue
         lid = ensure_lecture(course_id, args.folder, lec)
         if args.queue:
             from lecturelens.worker import process_lecture

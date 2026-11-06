@@ -7,10 +7,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg tesserac
 RUN useradd --create-home --uid 10001 app
 WORKDIR /app
 
+# dependencies first, in their own layer, so a code change doesn't reinstall them
 COPY pyproject.toml ./
+RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']))" \
+    > /tmp/requirements.txt && pip install --no-cache-dir -r /tmp/requirements.txt
 COPY lecturelens ./lecturelens
 COPY migrations ./migrations
-RUN pip install --no-cache-dir . && mkdir -p data/uploads && chown -R app data
+RUN pip install --no-cache-dir --no-deps . && mkdir -p data/uploads && chown -R app data
 
 USER app
 EXPOSE 8000

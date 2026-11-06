@@ -30,6 +30,10 @@ export function Pipeline({ id, onDeleted }: { id: string; onDeleted: () => void 
     api.lecture(id).then(setLec, (e: Error) => setError(e.message));
     const es = new EventSource(`/api/lectures/${id}/events`);
     es.addEventListener("progress", (e) => setLec(JSON.parse((e as MessageEvent).data)));
+    es.addEventListener("gone", () => {
+      es.close();
+      setError("This lecture was deleted.");
+    });
     // the stream ends when the lecture is ready or failed; fetch once more to be sure
     es.onerror = () => {
       es.close();

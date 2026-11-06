@@ -32,3 +32,9 @@ def test_note_times_must_be_real_times(signed_in, db, t_s):
         f"/lectures/{lid}/notes", content=body, headers={"Content-Type": "application/json"}
     )
     assert r.status_code == 422, r.text
+
+
+def test_api_responses_cant_be_sniffed_or_framed(client):
+    r = client.get("/auth/session")
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert "frame-ancestors 'none'" in r.headers["content-security-policy"]

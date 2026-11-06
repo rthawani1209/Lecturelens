@@ -51,6 +51,14 @@ def test_other_courses_are_not_searched(indexed):
 
 
 @pytest.mark.db
+@pytest.mark.parametrize("mode", ["meaning", "text", "hybrid"])
+def test_nonsense_finds_nothing(indexed, mode):
+    # meaning search has a nearest sentence for anything; it shouldn't offer it
+    _, cid, _ = indexed
+    assert search("xqzvbnm wibble", [cid], mode=mode) == []
+
+
+@pytest.mark.db
 def test_search_api(indexed, db, client, sign_in):
     body = client.get("/search", params={"q": "binary heap running time"}).json()
     assert body["hits"]
@@ -89,7 +97,9 @@ def test_tag_filter_keeps_only_moments_with_that_kind_of_frame(indexed, db, clie
     assert {_slide_at(truth, h.jump_s) for h in hits} == {SLIDE["relax"]}
     assert search("shortest path distance", [cid], tag="whiteboard") == []
 
-    body = client.get("/search", params={"q": "relax", "tag": "code"}).json()
+    body = client.get(
+        "/search", params={"q": "lower the distance when a shorter path shows up", "tag": "code"}
+    ).json()
     assert body["hits"] and all(h["tag"] == "code" for h in body["hits"])
     assert client.get("/search", params={"q": "relax", "tag": "cat"}).status_code == 422
 

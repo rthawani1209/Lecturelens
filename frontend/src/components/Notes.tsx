@@ -19,6 +19,7 @@ export function Notes({
   const [draft, setDraft] = useState("");
   const [at, setAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -69,7 +70,39 @@ export function Notes({
               <button type="button" className={`mono ${styles.link}`} onClick={() => onSeek(n.t_s)}>
                 {timecode(n.t_s)}
               </button>
-              <span>{n.text}</span>
+              {editing?.id === n.id ? (
+                <input
+                  className={styles.noteEdit}
+                  aria-label={`Edit note at ${timecode(n.t_s)}`}
+                  maxLength={2000}
+                  autoFocus
+                  value={editing.text}
+                  onChange={(e) => setEditing({ id: n.id, text: e.target.value })}
+                  onBlur={() => setEditing(null)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Escape") setEditing(null);
+                    if (e.key !== "Enter" || !editing.text.trim()) return;
+                    try {
+                      const saved = await api.editNote(n.id, editing.text.trim());
+                      setNotes((all) =>
+                        Array.isArray(all) ? all.map((x) => (x.id === n.id ? saved : x)) : all,
+                      );
+                      setEditing(null);
+                    } catch (err) {
+                      setError((err as Error).message);
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className={styles.noteText}
+                  title="Edit"
+                  onClick={() => setEditing({ id: n.id, text: n.text })}
+                >
+                  {n.text}
+                </button>
+              )}
               <button
                 type="button"
                 className={styles.remove}

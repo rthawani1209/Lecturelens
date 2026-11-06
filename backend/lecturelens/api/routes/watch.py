@@ -51,6 +51,12 @@ class NoteIn(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 
 
+class NoteEdit(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class NoteOut(BaseModel):
     id: UUID
     t_s: float
@@ -117,6 +123,19 @@ def add_note(lecture_id: UUID, body: NoteIn, user: dict = Depends(require_user))
             " VALUES (%s, %s, %s, %s, %s) RETURNING id, start_s AS t_s, note AS text",
             (user["id"], lecture_id, body.t_s, body.t_s, body.text.strip()),
         ).fetchone()
+
+
+@router.patch("/notes/{note_id}", response_model=NoteOut)
+def edit_note(note_id: UUID, body: NoteEdit, user: dict = Depends(require_user)) -> dict:
+    with connection() as conn:
+        row = conn.execute(
+            "UPDATE highlights SET note = %s WHERE id = %s AND user_id = %s"
+            " RETURNING id, start_s AS t_s, note AS text",
+            (body.text, note_id, user["id"]),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "note not found")
+    return row
 
 
 @router.delete("/notes/{note_id}", status_code=204)

@@ -10,13 +10,18 @@ signed, so chunks don't need the session cookie and the link can't be guessed.
 
 import hashlib
 import re
+import shutil
+import tempfile
 import time
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 from uuid import UUID
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
+from starlette.requests import ClientDisconnect
 
 from ... import queue, signing
 from ...config import get_settings
@@ -27,7 +32,8 @@ from ...storage import get_storage
 router = APIRouter(tags=["uploads"])
 
 _RANGE = re.compile(r"^bytes (?:(\d+)-(\d+)|\*)/(\d+)$")
-MAX_CHUNK = 64 * 1024**2
+# the web app's /api proxy refuses bodies over 10 MB; clients send 8 MiB chunks
+MAX_CHUNK = 8 * 1024**2
 
 
 def _resume(received: int) -> Response:
@@ -60,22 +66,52 @@ async def put_chunk(upload_id: UUID, request: Request, exp: int = 0, sig: str = 
         raise HTTPException(400, "send a Content-Range header")
     first, last, total = (int(g) if g is not None else None for g in m.groups())
 
-    body = bytearray()
-    if first is not None:
-        if last >= total:
-            raise HTTPException(400, "Content-Range goes past the end of the file")
-        if last < first or last - first + 1 > MAX_CHUNK:
-            raise HTTPException(400, "bad chunk range")
-        async for piece in request.stream():
-            body += piece
-            if len(body) > last - first + 1:
-                raise HTTPException(400, "chunk is longer than its Content-Range")
-        if len(body) != last - first + 1:
+    if first is None:
+        return await run_in_threadpool(_store, upload_id, None, total, None)
+    if last >= total:
+        raise HTTPException(400, "Content-Range goes past the end of the file")
+    if last < first or last - first + 1 > MAX_CHUNK:
+        raise HTTPException(400, "bad chunk range")
+    # answer a chunk we'd throw away without reading it
+    early = await run_in_threadpool(_not_next, upload_id, first, total)
+    if early is not None:
+        return early
+    # chunks go to disk, not memory: a few dozen 64 MB chunks at once would
+    # otherwise take gigabytes
+    with tempfile.SpooledTemporaryFile(max_size=1024**2) as body:
+        n = 0
+        try:
+            async for piece in request.stream():
+                n += len(piece)
+                if n > last - first + 1:
+                    raise HTTPException(400, "chunk is longer than its Content-Range")
+                body.write(piece)
+        except ClientDisconnect:
+            # the person cancelled, or lost their connection; they resume from what's stored
+            return Response(status_code=400)
+        if n != last - first + 1:
             raise HTTPException(400, "chunk is shorter than its Content-Range")
-    return _store(upload_id, first, total, bytes(body))
+        body.seek(0)
+        return await run_in_threadpool(_store, upload_id, first, total, body)
 
 
-def _store(upload_id: UUID, first: int | None, total: int, body: bytes) -> Response:
+def _not_next(upload_id: UUID, first: int, total: int) -> Response | None:
+    """The answer for a chunk that isn't the one we're waiting for, if it isn't.
+    No lock: _store checks again under one before writing anything."""
+    with connection() as conn:
+        up = conn.execute(
+            "SELECT done, size, received, lecture_id FROM uploads WHERE id = %s", (upload_id,)
+        ).fetchone()
+    if up is None:
+        raise HTTPException(404)
+    if up["done"]:
+        return JSONResponse({"lecture_id": str(up["lecture_id"])}, 200)
+    if total != up["size"]:
+        raise HTTPException(400, "total size doesn't match the upload")
+    return _resume(up["received"]) if first != up["received"] else None
+
+
+def _store(upload_id: UUID, first: int | None, total: int, body: BinaryIO | None) -> Response:
     with connection() as conn, conn.transaction():
         try:
             up = conn.execute(
@@ -93,21 +129,24 @@ def _store(upload_id: UUID, first: int | None, total: int, body: bytes) -> Respo
         if first is None or first != up["received"]:
             return _resume(up["received"])
 
-        if first == 0 and not looks_like_video(body[:16]):
-            # nothing worth keeping; drop the half-made lecture so it doesn't linger.
-            # (returned, not raised, so the transaction commits the delete)
+        if first == 0 and not looks_like_video(body.read(16)):
+            # nothing worth keeping; drop the half-made lecture so it doesn't linger,
+            # and give back the day's slot it took. (returned, not raised, so the
+            # transaction commits the deletes)
             conn.execute("DELETE FROM lectures WHERE id = %s", (up["lecture_id"],))
+            conn.execute("DELETE FROM lecture_adds WHERE lecture_id = %s", (up["lecture_id"],))
             return JSONResponse(
                 {"detail": "This file isn't a video. Try an mp4, mov, mkv or webm."}, 415
             )
 
         part = part_path(upload_id)
         part.parent.mkdir(parents=True, exist_ok=True)
+        body.seek(0)
         with open(part, "r+b" if part.exists() else "wb") as f:
             f.seek(first)
-            f.write(body)
+            shutil.copyfileobj(body, f, 4 * 1024**2)
             f.truncate()
-        received = first + len(body)
+            received = f.tell()
         conn.execute("UPDATE uploads SET received = %s WHERE id = %s", (received, upload_id))
         if received < up["size"]:
             return _resume(received)

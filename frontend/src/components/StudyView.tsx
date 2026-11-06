@@ -108,8 +108,14 @@ export function StudyView() {
       .catch((e: unknown) => {
         if (!live) return;
         setDeck(null);
+        // a link to a lecture that doesn't exist (or a mangled id) gets plain words
+        const missing = e instanceof ApiError && (e.status === 404 || e.status === 422);
         setError(
-          e instanceof ApiError || e instanceof Error ? e.message : "Couldn't open the deck.",
+          missing
+            ? "That lecture doesn't exist, or isn't shared with you. Pick one from the list."
+            : e instanceof Error
+              ? e.message
+              : "Couldn't open the deck.",
         );
       })
       .finally(() => live && setLoadingDeck(false));

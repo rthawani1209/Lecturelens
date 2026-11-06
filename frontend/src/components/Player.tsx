@@ -42,6 +42,15 @@ export function Player({ ref, src, start, length, transcript, tag, onTime, onExp
   const [captions, setCaptions] = useState(true);
   // 0 = fine, 1 = fetching a fresh link, 2 = gave up
   const [errors, setErrors] = useState(0);
+  // The page fetches fresh signed links every few minutes. Swapping the src of a
+  // playing video restarts it from 0:00, so keep the link it has until it fails
+  // (or it's a different video), and only then pick up the newest one.
+  const [videoSrc, setVideoSrc] = useState(src);
+  const wasPlaying = useRef(false);
+  useEffect(() => {
+    const path = (u: string | null) => u?.split("?")[0];
+    if (errors > 0 || path(src) !== path(videoSrc)) setVideoSrc(src);
+  }, [src, videoSrc, errors]);
 
   const vtt = useMemo(
     () => URL.createObjectURL(new Blob([toVtt(transcript)], { type: "text/vtt" })),
@@ -139,7 +148,7 @@ export function Player({ ref, src, start, length, transcript, tag, onTime, onExp
       <Reticle inset={16}>
         <video
           ref={video}
-          src={src ?? undefined}
+          src={videoSrc ?? undefined}
           className={styles.video}
           preload="metadata"
           playsInline
@@ -152,6 +161,8 @@ export function Player({ ref, src, start, length, transcript, tag, onTime, onExp
             if (resumeAt.current) v.currentTime = resumeAt.current;
             resumeAt.current = null;
             v.playbackRate = speed;
+            if (wasPlaying.current) v.play().catch(() => undefined);
+            wasPlaying.current = false;
             setErrors(0);
           }}
           onTimeUpdate={(e) => {
@@ -162,6 +173,7 @@ export function Player({ ref, src, start, length, transcript, tag, onTime, onExp
           onError={() => {
             // most likely the signed link expired mid-lecture: get a new one and carry on
             resumeAt.current = video.current?.currentTime ?? time;
+            wasPlaying.current = playing;
             // one fresh link usually fixes it; don't loop if the file itself is the problem
             setErrors((n) => {
               if (n === 0) onExpired();

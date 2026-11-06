@@ -1,6 +1,8 @@
 # Production stack for one server. bootstrap.sh writes .env next to this file and
 # starts it; nothing but Caddy (80/443) is reachable from outside.
 #   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+name: lecturelens  # so volumes are lecturelens_pgdata etc., whatever the folder
+
 x-backend-env: &backend-env
   DATABASE_URL: postgresql://lecturelens:${POSTGRES_PASSWORD}@postgres:5432/lecturelens
   REDIS_URL: redis://redis:6379/0
@@ -24,11 +26,18 @@ x-backend-env: &backend-env
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
+# every container's logs are capped, or a busy month fills the disk
+x-logging: &logging
+  logging:
+    driver: json-file
+    options: {max-size: "20m", max-file: "3"}
+
 services:
   caddy:
+    <<: *logging
     image: caddy:2
     restart: always
-    ports: ["80:80", "443:443"]
+    ports: ["80:80", "443:443", "443:443/udp"]  # udp for HTTP/3
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS}
     volumes:
@@ -37,6 +46,7 @@ services:
     depends_on: [web]
 
   postgres:
+    <<: *logging
     image: pgvector/pgvector:pg16
     restart: always
     environment:
@@ -50,10 +60,19 @@ services:
       retries: 20
 
   redis:
+    <<: *logging
     image: redis:7-alpine
     restart: always
+    # written to disk, so queued lectures survive a restart
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 20
 
   migrate:
+    <<: *logging
     build: ../backend
     command: ["python", "-m", "lecturelens.db.migrate"]
     environment: *backend-env
@@ -64,26 +83,35 @@ services:
       postgres: {condition: service_healthy}
 
   api:
+    <<: *logging
     build: ../backend
     restart: always
     environment:
       <<: *backend-env
       RERANKER_URL: http://serving:8501
+      TAGGER_URL: http://serving:8501
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      retries: 30
     volumes:
       - {type: volume, source: appdata, target: /app/data, volume: {nocopy: true}}
       - ../models:/models:ro
     depends_on:
       migrate: {condition: service_completed_successfully}
-      redis: {condition: service_started}
+      redis: {condition: service_healthy}
 
   web:
+    <<: *logging
     build:
       context: ../frontend
       args: {API_URL: "http://api:8000"}
     restart: always
-    depends_on: [api]
+    depends_on:
+      api: {condition: service_healthy}
 
   serving:
+    <<: *logging
     image: tensorflow/serving:2.21.0
     restart: always
     command: ["--model_config_file=/config/models.config"]
@@ -92,8 +120,11 @@ services:
       - ../ml/serving:/config:ro
 
   worker:
+    <<: *logging
     build: ../backend
     restart: always
+    # whisper's peaks stay inside this, so Postgres and the site keep their memory
+    mem_limit: 5g
     # one lecture at a time: whisper and OCR use every core, and two at once can run out of memory
     command: ["celery", "-A", "lecturelens.worker", "worker", "-l", "info", "--concurrency", "1"]
     environment:
@@ -106,9 +137,10 @@ services:
       - ../scripts:/scripts:ro
     depends_on:
       migrate: {condition: service_completed_successfully}
-      redis: {condition: service_started}
+      redis: {condition: service_healthy}
 
 volumes:
+  redisdata:
   pgdata:
   appdata:
   caddydata:

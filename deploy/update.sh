@@ -32,5 +32,7 @@ if ! docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --
   echo "build of ${new:0:7} failed; will retry"
   exit 1
 fi
+# old images and build cache add up to gigabytes after a few deploys
 docker image prune -f >/dev/null
+docker builder prune -f --keep-storage 2GB >/dev/null
 echo "deployed ${new:0:7}"

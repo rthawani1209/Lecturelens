@@ -172,6 +172,16 @@ def retrieve(
             vec = clip_embedder().embed_texts([q])[0]
             lists["visual"] = _frames_to_segments(conn, _visual(conn, vec, courses, n))
 
+    if "meaning" in lists:
+        # meaning search always finds a "nearest" sentence, even for gibberish. Below
+        # the floor nothing in the eval set was relevant (ml/eval/meaning_floor.json),
+        lists["meaning"] = [
+            r for r in lists["meaning"] if r["score"] >= get_settings().meaning_floor
+        ]
+        # and with no text match at all, picture matches alone are noise too
+        if not any(rows for name, rows in lists.items() if name != "visual"):
+            return {}
+
     cands: dict[int, Candidate] = {}
     for name, rows in lists.items():
         rank = 0

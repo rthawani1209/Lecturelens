@@ -62,12 +62,14 @@ class Settings(BaseSettings):
     # (0.756 vs 0.759 NDCG@10) at 1/20 of the latency, see ml/rerank/README.md
     search_mode: str = "meaning"
     max_upload_bytes: int = 4 * 1024**3
+    max_duration_s: int = 4 * 3600  # longer videos would tie up the worker for most of a day
 
     # search
     text_dim: int = 384  # all-MiniLM-L6-v2
     image_dim: int = 512  # CLIP ViT-B/32
     rrf_k: int = 60
     candidates: int = 50
+    meaning_floor: float = 0.30  # cosine; see ml/eval/meaning_floor.json
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

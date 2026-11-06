@@ -121,6 +121,10 @@ CPU; the site works while they process). A timer checks `main` every 15 minutes 
 rebuilds once a new commit's GitHub checks have all passed. The public site has a "Try it without an account"
 button and caps uploads per day; both are settings in `deploy/.env`.
 
+Every night at 03:30 the server dumps the database and copies the uploaded files to
+`/var/backups/lecturelens` (7 dumps and 2 file copies are kept). How to restore is at
+the top of `deploy/backup.sh`.
+
 Check a running site end to end:
 
 ```bash

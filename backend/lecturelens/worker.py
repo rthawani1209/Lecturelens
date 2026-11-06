@@ -1,8 +1,11 @@
 """Celery worker. Start with: celery -A lecturelens.worker worker -l info"""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from uuid import UUID
 
 from celery import Celery
+from celery.signals import worker_ready
 
 from .config import get_settings
 from .pipeline.media import MediaError
@@ -26,7 +29,9 @@ app.conf.update(
 def process_lecture(self, lecture_id: str) -> None:
     lid = UUID(lecture_id)
     try:
-        run_pipeline(lid)
+        with _only_one(lid) as mine:
+            if mine:
+                run_pipeline(lid)
     except MediaError:
         # a broken or non-video file won't fix itself: fail now instead of retrying
         _mark_failed(lid)
@@ -40,6 +45,39 @@ def process_lecture(self, lecture_id: str) -> None:
         if self.request.retries >= self.max_retries:
             _mark_failed(lid)
         raise
+
+
+@contextmanager
+def _only_one(lid: UUID) -> Iterator[bool]:
+    """Yields whether this task got the lecture. A lecture can be queued twice (a
+    retry clicked twice, or Redis handing back a message after a restart), and two
+    runs at once would trip over each other's files."""
+    from .db import connection
+
+    with connection() as conn:
+        conn.autocommit = True  # session lock, held while the pipeline runs
+        key = str(lid)
+        got = conn.execute("SELECT pg_try_advisory_lock(hashtext(%s)) AS ok", (key,)).fetchone()
+        try:
+            yield got["ok"]
+        finally:
+            if got["ok"]:
+                conn.execute("SELECT pg_advisory_unlock(hashtext(%s))", (key,))
+            conn.autocommit = False
+
+
+@worker_ready.connect
+def requeue_interrupted(**_) -> None:
+    """A deploy or crash kills the worker mid-lecture. Redis would only hand that
+    message back hours later, so on start put every unfinished lecture back in line."""
+    from .db import connection
+
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT id FROM lectures WHERE status IN ('queued', 'processing')"
+        ).fetchall()
+    for r in rows:
+        process_lecture.delay(str(r["id"]))
 
 
 def _exists(lid: UUID) -> bool:

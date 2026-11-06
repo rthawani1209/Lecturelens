@@ -1,0 +1,75 @@
+{
+  "floor": 0.3,
+  "lowest_relevant": [
+    {
+      "course": "18.06",
+      "query": "when can't we reach every right hand side b",
+      "score": 0.3181768655777
+    },
+    {
+      "course": "6.006",
+      "query": "Floyd Warshall cubic all pairs",
+      "score": 0.3892606496810913
+    },
+    {
+      "course": "6.006",
+      "query": "set interface find insert delete",
+      "score": 0.39616909623146057
+    },
+    {
+      "course": "6.100L",
+      "query": "checking several conditions in a row with elif",
+      "score": 0.41691712040203166
+    },
+    {
+      "course": "18.06",
+      "query": "solving the triangular system from the bottom up",
+      "score": 0.4245333969593048
+    }
+  ],
+  "relevant_hits": 130,
+  "relevant_below_floor": 0,
+  "junk": [
+    {
+      "query": "weather tomorrow",
+      "best": 0.3261873825676862
+    },
+    {
+      "query": "kjhg lkjh poiu",
+      "best": 0.30553079561980967
+    },
+    {
+      "query": "asdf qwerty zxcv",
+      "best": 0.27367864408024334
+    },
+    {
+      "query": "xqzvbnm wibble",
+      "best": 0.25957031605066794
+    },
+    {
+      "query": "how to fix a flat bike tire",
+      "best": 0.23956022318245984
+    },
+    {
+      "query": "purple monkey dishwasher",
+      "best": 0.22121656428723702
+    },
+    {
+      "query": "best pizza in chicago",
+      "best": 0.20338979136134805
+    },
+    {
+      "query": "lorem ipsum dolor sit amet",
+      "best": 0.19144067738773463
+    },
+    {
+      "query": "taylor swift tour dates",
+      "best": 0.17045100033283234
+    },
+    {
+      "query": "banana bread recipe",
+      "best": 0.14358352552603426
+    }
+  ],
+  "junk_above_floor": 2
+}

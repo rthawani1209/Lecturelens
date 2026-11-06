@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Course, type Hit, type Mode, type Tag } from "@/lib/api";
 import { CourseMap } from "./CourseMap";
 import { FilterChips, TAGS } from "./FilterChips";
@@ -29,7 +29,7 @@ function isTag(t: string | null): t is Tag {
   return TAGS.some((x) => x.id === t && x.id !== "all");
 }
 
-export function SearchView({ courses }: { courses: Course[] }) {
+export function SearchView({ courses: shared }: { courses: Course[] }) {
   const router = useRouter();
   const params = useSearchParams();
   const q = (params.get("q") ?? "").slice(0, 300); // the API takes at most 300
@@ -37,6 +37,16 @@ export function SearchView({ courses }: { courses: Course[] }) {
   const tag: Tag | "all" = isTag(params.get("tag")) ? (params.get("tag") as Tag) : "all";
   // no course in the URL means every course this person can see
   const courseId = params.get("course") ?? "";
+  // the server only sends public courses; add the signed-in person's own
+  const [own, setOwn] = useState<Course[]>([]);
+  useEffect(() => {
+    api
+      .me()
+      .then((me) => (me ? api.courses() : []))
+      .then((all) => setOwn(all.filter((c) => c.mine && !c.public)))
+      .catch(() => undefined);
+  }, []);
+  const courses = useMemo(() => [...own, ...shared], [own, shared]);
   const course = courses.find((c) => c.id === courseId);
 
   const [state, setState] = useState<State>({ kind: "idle" });
@@ -51,7 +61,10 @@ export function SearchView({ courses }: { courses: Course[] }) {
         if (!v || (k === "tag" && v === "all") || (k === "mode" && v === "meaning")) p.delete(k);
         else p.set(k, v);
       }
-      router.replace(`/search?${p}`, { scroll: false });
+      // a new question is a new page, so Back returns to the last one; filters aren't
+      const url = `/search?${p}`;
+      if (next.q !== undefined || next.course !== undefined) router.push(url, { scroll: false });
+      else router.replace(url, { scroll: false });
     },
     [params, router],
   );
@@ -111,7 +124,7 @@ export function SearchView({ courses }: { courses: Course[] }) {
       <div className={styles.top}>
         <p className="label">
           {course
-            ? `Search ${course.code} · ${course.lecture_count} lectures · speech, boards, slides and frames`
+            ? `Search ${course.code || course.title} · ${course.lecture_count} lectures · speech, boards, slides and frames`
             : "Search every lecture you can see"}
         </p>
         {courses.length > 1 && (
@@ -121,7 +134,7 @@ export function SearchView({ courses }: { courses: Course[] }) {
               <option value="">All courses</option>
               {courses.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.code} · {c.title}
+                  {c.code ? `${c.code} · ${c.title}` : c.title}
                 </option>
               ))}
             </select>

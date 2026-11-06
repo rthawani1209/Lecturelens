@@ -67,8 +67,11 @@ def main():
     page = site.call("GET", "/")
     assert b"LectureLens" in page, "home page doesn't look right"
     step("home page")
-    site.call("GET", "/api/health")
-    step("api health")
+    models = site.call("GET", "/api/health")["models"]
+    # without these the site quietly falls back to slower, weaker NumPy copies
+    bad = {k: v for k, v in models.items() if v != "AVAILABLE"}
+    assert not bad, f"TF Serving isn't serving: {bad}"
+    step("api health, both models served by TF Serving")
     assert site.call("GET", "/api/auth/providers").get("demo"), "demo sign-in is off"
     me = site.call("POST", "/api/auth/demo")
     step(f"demo sign-in as {me['email']}")

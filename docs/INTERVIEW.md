@@ -10,7 +10,7 @@ Partly, and the honest answer is the interesting part.
 Search combines four retrievers (keyword, meaning, slide text, image) with reciprocal
 rank fusion, then a small Keras network trained with a pairwise loss re-orders the top
 results. Two things moved the numbers on held-out MIT 6.006 lectures: tuning the fusion
-weights on val took hybrid NDCG@10 from 0.655 to 0.719, and the re-ranker took recall@5
+weights on val took hybrid NDCG@10 from 0.665 to 0.720, and the re-ranker took recall@5
 from 81.6% to 88.2%.
 
 But plain meaning search on its own scored 0.786, better than everything combined. I
@@ -45,7 +45,7 @@ number.
 
 Only on recall. With it, the right moment shows up in the top 5 for 88.2% of test
 questions instead of 81.6%, the best of any method. But it doesn't put that moment
-higher in the list: NDCG@10 stayed flat (0.719 to 0.720) and MRR dipped slightly. It
+higher in the list: NDCG@10 stayed flat (0.720 to 0.718) and MRR dipped slightly. It
 did beat the simpler logistic regression baseline (0.696 NDCG@10), so the pairwise
 network was worth more than a linear model on the same features. The bigger NDCG gain
 came from tuning the fusion weights, not from the model.

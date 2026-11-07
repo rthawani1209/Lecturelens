@@ -3,6 +3,9 @@
 # whose GitHub checks (CI, Deploy check, Security) have all passed. A red or
 # still-running commit is skipped; the next tick looks again.
 set -euo pipefail
+# never at the same time as bootstrap.sh (or another tick): they share this lock
+exec 9>/var/lock/lecturelens.lock
+flock -n 9 || { echo "busy (bootstrap or another update running)"; exit 0; }
 cd /opt/lecturelens
 git fetch -q origin main
 new=$(git rev-parse origin/main)
@@ -32,8 +35,11 @@ if ! bash scripts/get_models.sh >/dev/null || ! $compose up -d --build --remove-
   # a failed build, a migration that broke on real data, an api that never got
   # healthy: put the last good version back up (its images are cached) and let
   # the next tick try again
+  # --build: the images tagged latest are the broken new ones; the old tree's
+  # layers are still cached, so this takes seconds. A migration that half ran
+  # is not undone; check `$compose logs migrate`.
   git reset -q --hard "$old"
-  $compose up -d --remove-orphans || true
+  $compose up -d --build --remove-orphans || true
   echo "deploying ${new:0:7} failed; back on ${old:0:7}"
   exit 1
 fi

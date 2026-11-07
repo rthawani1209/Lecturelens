@@ -20,6 +20,7 @@ class CourseOut(BaseModel):
     public: bool
     mine: bool
     lecture_count: int
+    ready_count: int
 
 
 class CourseIn(BaseModel):
@@ -51,7 +52,9 @@ _LIST = """
     SELECT c.id, c.code, c.title, c.term, c.license, c.public,
            EXISTS (SELECT 1 FROM group_members m
                     WHERE m.group_id = c.group_id AND m.user_id = %(u)s) AS mine,
-           (SELECT count(*) FROM lectures l WHERE l.course_id = c.id) AS lecture_count
+           (SELECT count(*) FROM lectures l WHERE l.course_id = c.id) AS lecture_count,
+           (SELECT count(*) FROM lectures l
+             WHERE l.course_id = c.id AND l.status = 'ready') AS ready_count
       FROM courses c WHERE c.id = ANY(%(ids)s) ORDER BY c.public, c.code, c.title
 """
 

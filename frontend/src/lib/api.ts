@@ -13,6 +13,7 @@ export type Course = {
   public: boolean;
   mine: boolean;
   lecture_count: number;
+  ready_count: number;
 };
 
 export type Lecture = {

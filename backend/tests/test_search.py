@@ -51,7 +51,15 @@ def test_other_courses_are_not_searched(indexed):
 
 
 @pytest.mark.db
-@pytest.mark.parametrize("mode", ["meaning", "text", "hybrid"])
+def test_keyword_mode_wants_more_than_one_stray_word(indexed):
+    _, cid, _ = indexed
+    assert search("smallest estimate", [cid], mode="keyword")
+    # "estimate" is said, "pizza" never is: one shared word isn't a match
+    assert search("estimate pizza", [cid], mode="keyword") == []
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("mode", ["meaning", "text", "hybrid", "keyword"])
 def test_nonsense_finds_nothing(indexed, mode):
     # meaning search has a nearest sentence for anything; it shouldn't offer it
     _, cid, _ = indexed

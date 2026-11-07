@@ -54,6 +54,12 @@ function forget(lectureId: string) {
 
 const mb = (n: number) => `${(n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0)} MB`;
 
+/** The course to start on: the one with the most finished lectures, not an empty
+ * one left behind by a failed upload. */
+function busiest(courses: Course[]): string | undefined {
+  return [...courses].sort((a, b) => b.ready_count - a.ready_count)[0]?.id;
+}
+
 function message(e: unknown): string {
   if (e instanceof ApiError || e instanceof Error) return e.message;
   return "Something went wrong.";
@@ -98,9 +104,7 @@ export function UploadView() {
         const mine = all.filter((c) => c.mine);
         setCourses(mine);
         const asked = mine.find((c) => c.id === courseParam)?.id;
-        // otherwise the course with the most lectures, not an empty one left by a failed upload
-        const busiest = [...mine].sort((a, b) => b.lecture_count - a.lecture_count)[0]?.id;
-        setCourseId((cur) => cur || asked || busiest || "");
+        setCourseId((cur) => cur || asked || busiest(mine) || "");
         if (mine.length === 0) setNewCourse(true);
       },
       (e) => setFormError(message(e)),
@@ -275,7 +279,7 @@ export function UploadView() {
       await api.deleteCourse(course.id);
       const rest = courses.filter((c) => c.id !== course.id);
       setCourses(rest);
-      setCourseId(rest[0]?.id ?? "");
+      setCourseId(busiest(rest) ?? "");
       if (rest.length === 0) setNewCourse(true);
     } catch (e) {
       setFormError(message(e));

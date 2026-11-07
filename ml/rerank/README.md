@@ -57,17 +57,17 @@ only if a configuration beats meaning-only on val by at least 0.01.
 
 | method | recall@5 | MRR | NDCG@10 | p50 |
 |---|---|---|---|---|
-| keyword only | 0.632 | 0.496 | 0.523 | 43 ms |
-| hybrid, original weights (day 3) | 0.776 | 0.611 | 0.655 | 140 ms |
-| hybrid, tuned weights | 0.816 | 0.684 | 0.719 | 128 ms |
-| hybrid + logistic regression | 0.829 | 0.682 | 0.696 | 298 ms |
-| hybrid + re-ranker | **0.882** | 0.675 | 0.720 | 280 ms |
-| **meaning only (default)** | 0.855 | **0.779** | **0.786** | 21 ms |
+| keyword only | 0.632 | 0.568 | 0.573 | 24 ms |
+| hybrid, original weights (day 3) | 0.776 | 0.625 | 0.665 | 96 ms |
+| hybrid, tuned weights | 0.816 | 0.686 | 0.720 | 100 ms |
+| hybrid + logistic regression | 0.829 | 0.682 | 0.696 | 200 ms |
+| hybrid + re-ranker | **0.882** | 0.672 | 0.718 | 203 ms |
+| **meaning only (default)** | 0.855 | **0.779** | **0.786** | 11 ms |
 
 What this shows, honestly:
-- Two separate effects. Tuning the fusion weights on val took hybrid from 0.655 to
-  0.719 NDCG@10 (recall@5 77.6% to 81.6%). The re-ranker then took recall@5 from 81.6%
-  to 88.2%, the highest of any method, with NDCG@10 flat (0.719 to 0.720). It beats the
+- Two separate effects. Tuning the fusion weights on val took hybrid from 0.665 to
+  0.720 NDCG@10 (recall@5 77.6% to 81.6%). The re-ranker then took recall@5 from 81.6%
+  to 88.2%, the highest of any method, with NDCG@10 flat (0.720 to 0.718). It beats the
   logistic regression baseline (0.696).
 - On this course, meaning-only search is the best single method, which is why it's
   the default. 6.006 is spoken explanation in front of a chalkboard, so slide text and

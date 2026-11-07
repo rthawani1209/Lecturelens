@@ -89,6 +89,32 @@ def _keyword(conn, q: str, courses: Sequence[UUID], n: int) -> list[dict]:
     ).fetchall()
 
 
+def _keyword_only(conn, q: str, courses: Sequence[UUID], n: int) -> list[dict]:
+    """Keyword mode on its own has no gate, so it asks for every word of the query.
+    When no window has them all, it settles for windows with at least two of them
+    (one, for a one-word query), so "new car insurance quote" doesn't match every
+    "new" but a question with one stray word still finds its moment."""
+    rows = [r for r in _keyword(conn, q, courses, 4 * n) if r["full"]]
+    if rows:
+        return rows[:n]
+    return conn.execute(
+        f"""
+        WITH q AS (
+            SELECT array(SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', %(q)s))))
+                   AS words
+        )
+        SELECT s.id AS segment_id, s.lecture_id, s.start_s, s.end_s,
+               ts_rank_cd(s.tsv, {_TSQUERY}, 32) AS score, false AS full
+          FROM segments s JOIN lectures l ON l.id = s.lecture_id, q
+         WHERE l.course_id = ANY(%(courses)s) AND s.tsv @@ {_TSQUERY}
+           AND (SELECT count(*) FROM unnest(q.words) w
+                 WHERE s.tsv @@ plainto_tsquery('simple', w)) >= least(2, cardinality(q.words))
+         ORDER BY score DESC LIMIT %(n)s
+        """,
+        {"q": q, "courses": list(courses), "n": n},
+    ).fetchall()
+
+
 def _meaning(conn, vec: np.ndarray, courses: Sequence[UUID], n: int) -> list[dict]:
     return conn.execute(
         """
@@ -165,7 +191,9 @@ def retrieve(
     lists: dict[str, list[dict]] = {}
     with connection() as conn:
         conn.execute("SET hnsw.ef_search = 100")
-        if "keyword" in used:
+        if used == ("keyword",):
+            lists["keyword"] = _keyword_only(conn, q, courses, n)
+        elif "keyword" in used:
             lists["keyword"] = _keyword(conn, q, courses, n)
         if "meaning" in used:
             lists["meaning"] = _meaning(conn, text_embedder().embed([q])[0], courses, n)
@@ -204,7 +232,7 @@ def _gate(lists: dict[str, list[dict]], cands: dict[int, "Candidate"]) -> None:
     counts when meaning clears its floor or the speech or a slide has every word
     of the query; a picture alone counts only above its own floor. The lists stay
     whole, so fusion and the re-ranker see the same features they were tuned on;
-    collapse() drops the rest. Floors and how they were picked:
+    collapse() drops what isn't real. Floors and how they were picked:
     ml/eval/meaning_floor.json.
     """
     s = get_settings()
@@ -212,8 +240,16 @@ def _gate(lists: dict[str, list[dict]], cands: dict[int, "Candidate"]) -> None:
     for name in ("keyword", "ocr"):
         real |= {r["segment_id"] for r in lists.get(name, []) if r["full"]}
     real |= {r["segment_id"] for r in lists.get("visual", []) if r["score"] >= s.visual_floor}
-    for sid, c in cands.items():
-        c.real = sid in real
+    if set(lists) == {"meaning"}:
+        # one list, one score: everything under the floor goes
+        for sid, c in cands.items():
+            c.real = sid in real
+    elif not real:
+        # fused modes: a query with nothing real gets nothing. One that has a real
+        # match keeps its whole fused list, since pruning the rest cost the
+        # re-ranker NDCG on the eval set
+        for c in cands.values():
+            c.real = False
 
 
 def fuse(cands: dict[int, Candidate], k: int | None = None) -> list[tuple[Candidate, float]]:

@@ -8,6 +8,9 @@
 # Safe to run again: it keeps the existing .env and skips what's already there.
 set -euo pipefail
 exec > >(tee -a /var/log/lecturelens-bootstrap.log) 2>&1
+# held for the whole run, so the update timer installed below waits its turn
+exec 9>/var/lock/lecturelens.lock
+flock 9
 
 repo=https://github.com/rthawani1209/lecturelens.git
 dir=/opt/lecturelens

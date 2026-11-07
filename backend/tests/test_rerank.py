@@ -53,6 +53,10 @@ def test_gate_rejects_a_worse_model():
     worse = json.loads(json.dumps(results))
     worse["results"]["hybrid+reranker"]["ndcg@10"] = results["results"]["hybrid"]["ndcg@10"] - 0.01
     assert gate.check(worse, accepted)
+    # and one that doesn't find more right moments than plain hybrid has no reason to exist
+    same = json.loads(json.dumps(results))
+    same["results"]["hybrid+reranker"]["recall@5"] = results["results"]["hybrid"]["recall@5"]
+    assert gate.check(same, accepted)
 
 
 def test_serving_client_and_fallback(monkeypatch):

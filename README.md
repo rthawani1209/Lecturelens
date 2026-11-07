@@ -15,7 +15,7 @@ reproduces them in [docs/CLAIMS.md](docs/CLAIMS.md).
 | Same default on courses never used for tuning | NDCG@10 0.834 on 18.06, 0.775 on 6.100L | `ml/eval/results_18.06.json`, `results_6.100L.json` |
 | Keras re-ranker on top of hybrid search | recall@5 81.6% → **88.2%** (NDCG flat) | `ml/eval/results_test.json` |
 | Frame tagger (MobileNetV3, TF Serving) on hand-checked frames | **82.4%** vs 67.1% for CLIP zero-shot, 7.7x faster on CPU | `ml/tagger/results.json` |
-| Search latency, meaning search on a 4-CPU Linux box | p50 21 ms | `ml/eval/results_test.json` |
+| Search latency, meaning search on a 4-CPU Linux box | p50 11 ms | `ml/eval/results_test.json` |
 
 The honest part: plain meaning search beat the fused and re-ranked versions on 6.006,
 so it's the default, and a CI gate keeps it that way. The write-up is in

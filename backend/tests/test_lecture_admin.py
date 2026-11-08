@@ -112,9 +112,28 @@ def test_worker_start_requeues_unfinished_lectures(owned, db, monkeypatch):
 
     _, lid, _ = owned
     sent = []
-    monkeypatch.setattr(worker.process_lecture, "delay", sent.append)
+    monkeypatch.setattr(worker, "send", lambda i, p: sent.append((i, p)))
     worker.requeue_interrupted()
-    assert sent == [str(lid)]
+    assert sent == [(lid, worker.UPLOAD)]
+
+
+def test_demo_backlog_goes_behind_uploads(owned, db, monkeypatch):
+    from lecturelens import worker
+
+    _, lid, _ = owned
+    # a seeded one: public course, no uploader
+    db.execute(
+        "UPDATE courses SET public = true"
+        " WHERE id = (SELECT course_id FROM lectures WHERE id = %s)",
+        (lid,),
+    )
+    sent = []
+    monkeypatch.setattr(
+        worker.process_lecture, "apply_async", lambda a, priority: sent.append(priority)
+    )
+    worker.requeue_interrupted()
+    worker.send(lid)
+    assert sent == [worker.BACKLOG, worker.UPLOAD]
 
 
 def test_one_run_per_lecture_at_a_time(owned, monkeypatch):

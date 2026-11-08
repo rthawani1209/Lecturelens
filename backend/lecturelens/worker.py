@@ -19,8 +19,16 @@ app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
-    broker_transport_options={"visibility_timeout": 4 * 3600},
+    # Redis serves lower numbers first: a visitor's upload goes ahead of the
+    # demo backlog instead of waiting hours behind it
+    broker_transport_options={"visibility_timeout": 4 * 3600, "priority_steps": [0, 9]},
 )
+
+UPLOAD, BACKLOG = 0, 9
+
+
+def send(lecture_id, priority: int = UPLOAD) -> None:
+    process_lecture.apply_async((str(lecture_id),), priority=priority)
 
 
 @app.task(
@@ -74,10 +82,13 @@ def requeue_interrupted(**_) -> None:
 
     with connection() as conn:
         rows = conn.execute(
-            "SELECT id FROM lectures WHERE status IN ('queued', 'processing')"
+            "SELECT l.id, l.created_by IS NULL AND c.public AS demo"
+            " FROM lectures l JOIN courses c ON c.id = l.course_id"
+            " WHERE l.status IN ('queued', 'processing')"
         ).fetchall()
     for r in rows:
-        process_lecture.delay(str(r["id"]))
+        # the seeded demo courses are public and have no uploader
+        send(r["id"], BACKLOG if r["demo"] else UPLOAD)
 
 
 def _exists(lid: UUID) -> bool:

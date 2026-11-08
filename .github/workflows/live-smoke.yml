@@ -1,5 +1,6 @@
-# Runs deploy/smoke.py against a live site, from outside it: demo sign-in, upload,
-# processing, search and playback over real HTTPS.
+# Checks a live site from outside it: a lecture from each MIT course goes through
+# sign-in, upload, processing, search and playback (deploy/smoke.py), and
+# deploy/edges.py tries bad files, odd searches and missing pages.
 name: Live smoke test
 
 on:
@@ -11,17 +12,37 @@ permissions:
   contents: read
 
 jobs:
-  smoke:
+  lecture:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {release: ocw-18.06, video: lec01.mp4, start: 60, phrase: "solve a system of linear equations"}
+          - {release: ocw-6.006-s20, video: lec03.mp4, start: 90, phrase: "a data structure that implements an interface"}
+          - {release: ocw-6.100l, video: lec02.mp4, start: 90, phrase: "binding the name radius to a value"}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Test video (2 minutes of MIT 18.06, lecture 1)
+      - name: Two minutes of ${{ matrix.release }} ${{ matrix.video }}
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
-          rel=https://github.com/rthawani1209/lecturelens/releases/download/ocw-18.06
-          curl -fsSL --retry 3 -o lec01.mp4 "$rel/lec01.mp4"
-          ffmpeg -loglevel error -ss 60 -t 120 -i lec01.mp4 -c copy clip.mp4
-      - run: python3 deploy/smoke.py "$URL" clip.mp4 "solve a system of linear equations" --timeout 1800
+          curl -fsSL --retry 3 -o full.mp4 \
+            "https://github.com/rthawani1209/lecturelens/releases/download/${{ matrix.release }}/${{ matrix.video }}"
+          ffmpeg -loglevel error -ss ${{ matrix.start }} -t 120 -i full.mp4 -c copy clip.mp4
+      - run: python3 deploy/smoke.py "$URL" clip.mp4 "$PHRASE" --timeout 2700
+        env:
+          URL: ${{ inputs.url }}
+          PHRASE: ${{ matrix.phrase }}
+
+  edges:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL --retry 3 -o full.mp4 \
+            https://github.com/rthawani1209/lecturelens/releases/download/ocw-18.06/lec01.mp4
+      - run: python3 deploy/edges.py "$URL" full.mp4
         env:
           URL: ${{ inputs.url }}

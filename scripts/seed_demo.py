@@ -176,9 +176,9 @@ def main() -> None:
             continue
         lid = ensure_lecture(course_id, args.folder, lec)
         if args.queue:
-            from lecturelens.worker import process_lecture
+            from lecturelens.worker import BACKLOG, send
 
-            process_lecture.delay(str(lid))
+            send(lid, BACKLOG)  # behind anything a visitor uploads
             continue
         t0 = time.time()
         run_pipeline(lid)

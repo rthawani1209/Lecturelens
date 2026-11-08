@@ -125,6 +125,13 @@ CPU; the site works while they process). A timer checks `main` every 15 minutes 
 rebuilds once a new commit's GitHub checks have all passed. The public site has a "Try it without an account"
 button and caps uploads per day; both are settings in `deploy/.env`.
 
+The live demo runs on an AWS EC2 m7i-flex.large (2 vCPU, 8 GB, x86, us-west-2) on AWS's
+Free plan, launched 2026-11-08. The plan's credits (up to $200) last until they're used
+up or 6 months pass; at about $77 a month for this server (instance ~$70, 40 GB disk
+~$3, public IPv4 ~$4, on-demand prices), they run out around **February 2027**. The
+Free plan never bills: when the credits end, AWS stops the server unless the account is
+upgraded. Check the credits under Billing → Free tier in the AWS console.
+
 Every night at 03:30 the server dumps the database and copies the uploaded files to
 `/var/backups/lecturelens` (7 dumps and 2 file copies are kept, readable by root
 only). To put one back, replacing what's there:

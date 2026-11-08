@@ -82,6 +82,8 @@ def requeue_interrupted(**_) -> None:
     and the database knows everything that still needs doing."""
     from .db import connection
 
+    # fine with the one worker we run; a second worker would need a lock here, or
+    # its purge could drop tasks the first one just put back
     app.control.purge()
     with connection() as conn:
         rows = conn.execute(

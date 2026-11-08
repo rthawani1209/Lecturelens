@@ -24,6 +24,8 @@ x-backend-env: &backend-env
   MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-4294967296}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   SMTP_URL: ${SMTP_URL:-}
+  # nobody reads the server log for sign-in links; without SMTP, hide email sign-in
+  EMAIL_TO_LOG: "false"
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 

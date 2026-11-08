@@ -44,8 +44,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # true behind https
     google_client_id: str = ""
     google_client_secret: str = ""
-    # empty smtp_url prints sign-in links to the log instead of emailing them
+    # empty smtp_url prints sign-in links to the log instead of emailing them (local
+    # dev); a public server sets email_to_log off, so without SMTP it hides email sign-in
     smtp_url: str = ""  # smtp://user:pass@host:587
+    email_to_log: bool = True
     mail_from: str = "LectureLens <noreply@lecturelens.local>"
 
     upload_dir: str = "data/uploads"

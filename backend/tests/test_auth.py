@@ -2,6 +2,7 @@ import pytest
 
 from lecturelens import mail
 from lecturelens.api.routes import auth as auth_routes
+from lecturelens.config import get_settings
 
 pytestmark = pytest.mark.db
 
@@ -121,6 +122,19 @@ def test_google_rejects_wrong_state_and_unverified_email(client, google):
 
 def test_google_off_without_client_id(client):
     assert client.get("/auth/google/start", follow_redirects=False).status_code == 404
+
+
+def test_no_email_sign_in_on_a_server_that_cant_send_mail(client, monkeypatch):
+    monkeypatch.setenv("EMAIL_TO_LOG", "false")
+    get_settings.cache_clear()
+    try:
+        assert client.get("/auth/providers").json()["email"] is False
+        assert client.post("/auth/email", json={"email": "a@example.com"}).status_code == 404
+        monkeypatch.setenv("SMTP_URL", "smtp://mail.example.com:587")
+        get_settings.cache_clear()
+        assert client.get("/auth/providers").json()["email"] is True
+    finally:
+        get_settings.cache_clear()
 
 
 def test_providers_only_offer_google_when_configured(client):

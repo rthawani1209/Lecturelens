@@ -56,6 +56,8 @@ def _set_session(response: Response, token: str) -> None:
 
 @router.post("/email", status_code=204)
 def email_link(body: EmailIn) -> None:
+    if not _email_on():
+        raise HTTPException(404, "Email sign-in isn't set up on this server")
     # same answer whether or not the address has an account
     if not start_email_login(body.email):
         raise HTTPException(
@@ -80,12 +82,17 @@ def session(user: dict | None = Depends(current_user)) -> dict:
     return {"user": _me(user["id"]) if user else None}
 
 
+def _email_on() -> bool:
+    s = get_settings()
+    return bool(s.smtp_url) or s.email_to_log
+
+
 @router.get("/providers")
 def providers() -> dict:
     """Which sign-in buttons the web app should show."""
     s = get_settings()
     return {
-        "email": True,
+        "email": _email_on(),
         "google": bool(s.google_client_id),
         "demo": s.demo_login,
         "max_upload_bytes": s.max_upload_bytes,  # so the upload page states the real limit

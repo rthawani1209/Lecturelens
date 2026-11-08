@@ -13,6 +13,8 @@ export function SignIn() {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [why, setWhy] = useState("");
   const [google, setGoogle] = useState(false);
+  // off on a server that can't send mail; the form would promise a link that never comes
+  const [emailOn, setEmailOn] = useState(true);
   const [demo, setDemo] = useState<"off" | "on" | "busy" | "failed">("off");
   const router = useRouter();
   const next = safeNext(params.get("next"));
@@ -22,6 +24,7 @@ export function SignIn() {
       .providers()
       .then((p) => {
         setGoogle(p.google);
+        setEmailOn(p.email);
         if (p.demo) setDemo("on");
       })
       .catch(() => setGoogle(false));
@@ -42,7 +45,11 @@ export function SignIn() {
             Google sign-in didn&apos;t work. Try again, or use an email link.
           </p>
         )}
-        {state === "sent" ? (
+        {!emailOn ? (
+          <p className={styles.small} role="status">
+            Email sign-in isn&apos;t switched on for this site yet.
+          </p>
+        ) : state === "sent" ? (
           <div className={styles.sent} role="status">
             <strong>Check your email.</strong> We sent a sign-in link to {email}. It works once and
             expires in 15 minutes.

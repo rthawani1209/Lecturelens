@@ -66,7 +66,9 @@ def main():
 
     page = site.call("GET", "/")
     assert b"LectureLens" in page, "home page doesn't look right"
-    step("home page")
+    # the home page is rendered on the server, which has to reach the API itself
+    assert b"reach the LectureLens API" not in page, "home page can't reach the API"
+    step("home page, with courses from the API")
     models = site.call("GET", "/api/health")["models"]
     # a configured TF Serving that isn't answering means the site quietly fell back to
     # NumPy copies; "not configured" is the ARM setup, which uses them on purpose

@@ -68,10 +68,11 @@ def main():
     assert b"LectureLens" in page, "home page doesn't look right"
     step("home page")
     models = site.call("GET", "/api/health")["models"]
-    # without these the site quietly falls back to slower, weaker NumPy copies
-    bad = {k: v for k, v in models.items() if v != "AVAILABLE"}
+    # a configured TF Serving that isn't answering means the site quietly fell back to
+    # NumPy copies; "not configured" is the ARM setup, which uses them on purpose
+    bad = {k: v for k, v in models.items() if v not in ("AVAILABLE", "not configured")}
     assert not bad, f"TF Serving isn't serving: {bad}"
-    step("api health, both models served by TF Serving")
+    step(f"api health, models: {models}")
     assert site.call("GET", "/api/auth/providers").get("demo"), "demo sign-in is off"
     me = site.call("POST", "/api/auth/demo")
     step(f"demo sign-in as {me['email']}")

@@ -27,7 +27,9 @@ if [ "$verdict" != green ]; then
   exit 0
 fi
 
-compose="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
+files="-f deploy/docker-compose.yml"
+[ "$(uname -m)" = aarch64 ] && files="$files -f deploy/docker-compose.arm.yml"
+compose="docker compose $files --env-file deploy/.env"
 old=$(git rev-parse HEAD)
 git reset -q --hard "$new"
 # a release can add a model; TF Serving won't start without it

@@ -107,7 +107,11 @@ TEST_DATABASE_URL=postgresql://lecturelens:lecturelens@localhost:5432/lecturelen
 ## Deploy it
 
 One server with 4 vCPUs and 8 GB of memory runs everything (Hetzner CX32 or similar,
-Ubuntu 24.04). As root on the new server:
+Ubuntu 24.04). Oracle Cloud's Always Free Ampere VM (4 OCPUs, 24 GB) works too: on ARM
+the scripts add `deploy/docker-compose.arm.yml`, which leaves out TF Serving (x86 only)
+so the built-in model copies are used, and open ports 80/443 in Oracle's image firewall.
+You still add an ingress rule for 80 and 443 to the VCN's security list. As root on the
+new server:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rthawani1209/lecturelens/main/deploy/bootstrap.sh | bash

@@ -10,7 +10,9 @@ cd /opt/lecturelens
 out=/var/backups/lecturelens
 mkdir -p "$out"
 day=$(date +%F)
-compose="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
+files="-f deploy/docker-compose.yml"
+[ "$(uname -m)" = aarch64 ] && files="$files -f deploy/docker-compose.arm.yml"
+compose="docker compose $files --env-file deploy/.env"
 
 $compose exec -T postgres pg_dump -U lecturelens lecturelens | gzip >"$out/db-$day.sql.gz.part"
 mv "$out/db-$day.sql.gz.part" "$out/db-$day.sql.gz"

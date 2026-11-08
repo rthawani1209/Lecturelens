@@ -1,0 +1,14 @@
+# Added on ARM servers (e.g. Oracle Cloud's free Ampere VMs) by the deploy scripts.
+# TF Serving only ships x86 images, so it's left out and the API and worker use
+# their built-in copies of the models: the same re-ranker scores, a linear probe
+# for slide tags.
+services:
+  serving:
+    profiles: [tfserving]
+  api:
+    environment:
+      RERANKER_URL: ""
+      TAGGER_URL: ""
+  worker:
+    environment:
+      TAGGER_URL: ""

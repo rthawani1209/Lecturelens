@@ -7,7 +7,9 @@ set -euo pipefail
 cd /opt/lecturelens
 day=${1:?usage: restore.sh <date>, e.g. $(ls /var/backups/lecturelens | sed -n 's/^db-\(.*\)\.sql\.gz$/\1/p' | tail -1)}
 src=/var/backups/lecturelens
-compose="docker compose -f deploy/docker-compose.yml --env-file deploy/.env"
+files="-f deploy/docker-compose.yml"
+[ "$(uname -m)" = aarch64 ] && files="$files -f deploy/docker-compose.arm.yml"
+compose="docker compose $files --env-file deploy/.env"
 
 $compose stop api worker web
 $compose exec -T postgres psql -v ON_ERROR_STOP=1 -U lecturelens lecturelens \

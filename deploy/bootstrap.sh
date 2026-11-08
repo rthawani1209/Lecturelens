@@ -27,6 +27,15 @@ if ! swapon --show | grep -q .; then
   echo "/swapfile none swap sw 0 0" >>/etc/fstab
 fi
 
+# Oracle Cloud's Ubuntu images only let SSH through their own firewall
+if iptables -C INPUT -j REJECT --reject-with icmp-host-prohibited 2>/dev/null; then
+  for port in 443 80; do
+    iptables -C INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null ||
+      iptables -I INPUT -p tcp --dport $port -j ACCEPT
+  done
+  command -v netfilter-persistent >/dev/null && netfilter-persistent save
+fi
+
 [ -d "$dir/.git" ] || git clone "$repo" "$dir"
 cd "$dir"
 
@@ -81,7 +90,9 @@ fetch_course 6.006 ocw-6.006-s20
 fetch_course 6.100L ocw-6.100l
 fetch_course 18.06 ocw-18.06
 
-compose="docker compose -f deploy/docker-compose.yml --env-file $env_file"
+files="-f deploy/docker-compose.yml"
+[ "$(uname -m)" = aarch64 ] && files="$files -f deploy/docker-compose.arm.yml"
+compose="docker compose $files --env-file $env_file"
 $compose up -d --build
 
 for course in 6.006 6.100L 18.06; do

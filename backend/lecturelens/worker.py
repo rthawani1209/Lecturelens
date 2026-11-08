@@ -77,9 +77,12 @@ def _only_one(lid: UUID) -> Iterator[bool]:
 @worker_ready.connect
 def requeue_interrupted(**_) -> None:
     """A deploy or crash kills the worker mid-lecture. Redis would only hand that
-    message back hours later, so on start put every unfinished lecture back in line."""
+    message back hours later, so on start put every unfinished lecture back in line.
+    The old messages go first: they may be stale or queued at the wrong priority,
+    and the database knows everything that still needs doing."""
     from .db import connection
 
+    app.control.purge()
     with connection() as conn:
         rows = conn.execute(
             "SELECT l.id, l.created_by IS NULL AND c.public AS demo"

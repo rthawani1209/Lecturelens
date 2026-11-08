@@ -112,9 +112,10 @@ def test_worker_start_requeues_unfinished_lectures(owned, db, monkeypatch):
 
     _, lid, _ = owned
     sent = []
+    monkeypatch.setattr(worker.app.control, "purge", lambda: sent.append("purge"))
     monkeypatch.setattr(worker, "send", lambda i, p: sent.append((i, p)))
     worker.requeue_interrupted()
-    assert sent == [(lid, worker.UPLOAD)]
+    assert sent == ["purge", (lid, worker.UPLOAD)]
 
 
 def test_demo_backlog_goes_behind_uploads(owned, db, monkeypatch):
@@ -128,6 +129,7 @@ def test_demo_backlog_goes_behind_uploads(owned, db, monkeypatch):
         (lid,),
     )
     sent = []
+    monkeypatch.setattr(worker.app.control, "purge", lambda: None)
     monkeypatch.setattr(
         worker.process_lecture, "apply_async", lambda a, priority: sent.append(priority)
     )

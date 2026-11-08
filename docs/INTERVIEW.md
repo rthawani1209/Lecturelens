@@ -84,3 +84,11 @@ no-transform` fixed it, and a backend test now checks the header.
 
 What's mocked: the YouTube download. CI can't depend on YouTube, so a manual workflow
 runs a real import instead.
+
+## Deploy: "Is the live demo using TF Serving?"
+
+No, and I'd say so up front. TF Serving runs the tagger and the re-ranker on x86 and in
+CI, but the free host is an ARM machine (Oracle Cloud), and `tensorflow/serving` has no
+arm64 image. So there the worker runs the same weights in-process: the tagger as an
+ONNX export through onnxruntime, the re-ranker in NumPy. Tests check both match Keras
+to 1e-4, and CI runs the full deploy smoke test on x86 and on ARM.

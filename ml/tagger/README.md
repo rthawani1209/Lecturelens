@@ -20,8 +20,10 @@ Tags every captured frame as **slide, code, whiteboard, diagram, professor** or 
    the default signature takes JPEG bytes and resizes in the graph, and `tags.json` ships
    alongside so the backend can refuse a model whose output order doesn't match its tag
    names. `docker compose` serves it with `tensorflow/serving`; `scripts/get_models.sh`
-   downloads it from the `tagger-v1` release. If TF Serving is missing or erroring, the
-   worker logs a warning and tags with the CLIP probe instead of failing the lecture.
+   downloads it from the `tagger-v1` release. `export_onnx.py` also converts it to
+   `backend/lecturelens/assets/tagger.onnx`, which the worker runs with onnxruntime when
+   TF Serving isn't configured or is erroring (ARM hosts have no TF Serving image). The
+   CLIP probe is only a last resort if that file can't be loaded.
 
 ## Results (held-out lectures, 85 hand-checked frames, CPU)
 
@@ -52,5 +54,6 @@ python ml/tagger/contact_sheet.py     # optional: sheets for re-checking labels
 uv venv ml/.venv && uv pip install --python ml/.venv/bin/python -r ml/requirements.txt
 ml/.venv/bin/python ml/tagger/train.py
 ml/.venv/bin/python ml/tagger/export.py models/tagger_build/<version>
+ml/.venv/bin/python ml/tagger/export_onnx.py   # in-process copy for the backend
 python ml/tagger/bench_clip.py        # CLIP timing for the table
 ```

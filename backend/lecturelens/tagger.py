@@ -1,9 +1,10 @@
 """What kind of frame is this: slide, code, whiteboard, diagram, professor or other?
 
-The real tagger is the MobileNetV3 model trained in ml/tagger and served by
-TF Serving (TAGGER_URL). Without it, or when it's down, a linear probe on the CLIP
-vectors we already store does the job (same accuracy on our test set, but it needs
-the 350 MB CLIP model), so local dev and tests work with no extra service.
+The real tagger is the MobileNetV3 model trained in ml/tagger, served by TF Serving
+(TAGGER_URL). Without it, or when it's down, the same weights run in-process from an
+ONNX copy (assets/tagger.onnx, made by ml/tagger/export_onnx.py), which is what ARM
+hosts use since TF Serving has no ARM image. The linear probe on the stored CLIP
+vectors is only a last resort if that file can't be loaded; it's weaker.
 """
 
 import base64
@@ -13,10 +14,13 @@ from pathlib import Path
 
 import httpx
 import numpy as np
+from PIL import Image
 
 from .config import get_settings
 
 _PROBE = Path(__file__).parent / "assets" / "tag_probe.npz"
+_ONNX = Path(__file__).parent / "assets" / "tagger.onnx"
+SIZE = 224
 
 
 class TagOrderError(RuntimeError):
@@ -41,6 +45,33 @@ def tags() -> list[str]:
 def probe_scores(clip_vectors: np.ndarray) -> np.ndarray:
     w, b, _ = _probe()
     return _softmax(clip_vectors @ w + b)
+
+
+@lru_cache(maxsize=1)
+def _onnx_session():
+    import onnxruntime as ort
+
+    sess = ort.InferenceSession(str(_ONNX), providers=["CPUExecutionProvider"])
+    meta = sess.get_modelmeta().custom_metadata_map
+    if json.loads(meta.get("tags", "null")) != tags():
+        raise TagOrderError(f"onnx tagger tags {meta.get('tags')} != backend tags {tags()}")
+    return sess
+
+
+def _pixels(path: Path) -> np.ndarray:
+    # squashed to 224x224 with PIL bilinear, exactly as ml/tagger/train.py did
+    with Image.open(path) as img:
+        return np.asarray(img.convert("RGB").resize((SIZE, SIZE), Image.BILINEAR))
+
+
+def onnx_scores(images: list[Path], batch: int = 32) -> np.ndarray:
+    """The trained tagger, run in-process with onnxruntime."""
+    sess = _onnx_session()
+    out = [
+        sess.run(["tags"], {"image": np.stack([_pixels(p) for p in images[i : i + batch]])})[0]
+        for i in range(0, len(images), batch)
+    ]
+    return np.concatenate(out) if out else np.zeros((0, len(tags())), np.float32)
 
 
 @lru_cache(maxsize=4)

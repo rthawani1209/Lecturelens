@@ -1,5 +1,6 @@
 import base64
 import json
+from pathlib import Path
 
 import httpx
 import numpy as np
@@ -62,3 +63,23 @@ def test_model_with_different_tag_order_is_refused(model_dir):
     tagger.check_model_tags.cache_clear()
     with pytest.raises(tagger.TagOrderError):
         tagger.check_model_tags(model_dir)
+
+
+FIXED = json.loads((Path(__file__).parent / "data" / "tagger_fixed.json").read_text())
+
+
+def test_onnx_tagger_matches_keras_on_the_held_out_frames():
+    # the 85 hand-checked frames from the test lectures, with the scores Keras gave them
+    frames = Path(__file__).parent / "data" / "tagger_frames"
+    paths = [frames / f["file"] for f in FIXED["frames"]]
+    scores = tagger.onnx_scores(paths, batch=16)
+    np.testing.assert_allclose(scores, [f["keras"] for f in FIXED["frames"]], atol=1e-4)
+    labels = [tagger.tags().index(f["label"]) for f in FIXED["frames"]]
+    accuracy = float(np.mean(scores.argmax(1) == labels))
+    assert accuracy == pytest.approx(0.835, abs=0.001)  # ml/tagger/results.json
+
+
+def test_onnx_tagger_is_the_shipped_model_version():
+    meta = tagger._onnx_session().get_modelmeta().custom_metadata_map
+    assert int(meta["version"]) == FIXED["model_version"]
+    assert json.loads(meta["tags"]) == tagger.tags() == FIXED["tags"]

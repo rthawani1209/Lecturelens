@@ -270,17 +270,21 @@ def stage_tag(lecture_id: UUID, work: Path, report: Progress) -> None:
         ).fetchall()
     if not frames:
         return
+    storage = get_storage()
+    paths = [storage.get_file(f["thumb_key"], work / f"{f['id']}.jpg") for f in frames]
     scores = None
     if url := tagger.tagger_url():
-        storage = get_storage()
-        paths = [storage.get_file(f["thumb_key"], work / f"{f['id']}.jpg") for f in frames]
         try:
             scores = tagger.serving_scores(paths, url)
         except (httpx.HTTPError, OSError, ValueError, tagger.TagOrderError) as e:
             # tags are nice to have; a down tagger shouldn't fail the whole lecture
-            log.warning("tagger at %s failed (%s), using the CLIP probe", url, e)
+            log.warning("tagger at %s failed (%s), running it in-process", url, e)
     if scores is None:
-        scores = tagger.probe_scores(np.stack([f["clip_emb"].to_numpy() for f in frames]))
+        try:
+            scores = tagger.onnx_scores(paths)
+        except Exception as e:  # onnxruntime raises its own types; any failure falls back
+            log.warning("in-process tagger failed (%s), using the CLIP probe", e)
+            scores = tagger.probe_scores(np.stack([f["clip_emb"].to_numpy() for f in frames]))
     report(1.0)
     names = tagger.tags()
     with connection() as conn, conn.cursor() as cur:

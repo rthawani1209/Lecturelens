@@ -13,7 +13,7 @@ test("flashcards: open a deck, flip, grade, and ask", async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`lecture=${seed.lecture_id}`));
 
   const card = page.getByRole("region", { name: "Card" });
-  await expect(card.getByText("Fill in the blank")).toBeVisible({ timeout: 30_000 });
+  await expect(card.getByText("Question", { exact: true })).toBeVisible({ timeout: 30_000 });
   const counter = card.getByText(/^card 1 of (\d+)/);
   await expect(counter).toBeVisible();
   const total = Number((await counter.innerText()).match(/of (\d+)/)![1]);

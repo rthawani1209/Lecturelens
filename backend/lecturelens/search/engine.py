@@ -332,6 +332,25 @@ def _with_tag(ranked: list[tuple[Candidate, float]], tag: str) -> list[tuple[Can
     return [(c, s) for c, s in ranked if c.segment_id in ok]
 
 
+def _with_neighbours(conn, lecture_id, line: dict) -> dict:
+    """Whisper cuts some speakers into scraps ("to the loop."); a result that shows
+    only the scrap says nothing, so add the lines either side of it."""
+    rows = conn.execute(
+        """
+        (SELECT start_s, text FROM transcript_lines
+          WHERE lecture_id = %(l)s AND start_s < %(t)s ORDER BY start_s DESC LIMIT 1)
+        UNION ALL
+        (SELECT start_s, text FROM transcript_lines
+          WHERE lecture_id = %(l)s AND start_s > %(t)s ORDER BY start_s LIMIT 1)
+        """,
+        {"l": lecture_id, "t": line["start_s"]},
+    ).fetchall()
+    before = [r for r in rows if r["start_s"] < line["start_s"]]
+    after = [r for r in rows if r["start_s"] > line["start_s"]]
+    text = " ".join(r["text"] for r in [*before, line, *after])
+    return {"start_s": (before or [line])[0]["start_s"], "text": text}
+
+
 def hydrate(q: str, ranked: list[tuple[Candidate, float]]) -> list[Hit]:
     """Fill in titles, the sentence to jump to, and the frame to show."""
     if not ranked:
@@ -363,6 +382,8 @@ def hydrate(q: str, ranked: list[tuple[Candidate, float]]) -> list[Hit]:
                 """,
                 (c.lecture_id, c.end_s, c.start_s, qvec),
             ).fetchone()
+            if line is not None and len(line["text"].split()) < 8:
+                line = _with_neighbours(conn, c.lecture_id, line)
             frame = None
             if c.frame_id is not None:
                 frame = conn.execute(

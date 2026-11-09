@@ -77,11 +77,12 @@ them.
 
 ## Study and Ask
 
-When a lecture is opened in Study for the first time, the API writes its deck. With an
-API key, Claude writes question and answer cards from the transcript (structured
-output, each card pinned to a second of the lecture). Without one, the cards are
-fill-in-the-blank: whole sentences from the lecture that contain a term the course
-says rarely and the slides also show. Reviews use SM-2 spaced repetition.
+When a lecture is opened in Study for the first time, the API writes its deck. Claude
+(Haiku by default, set with AI_MODEL) writes question and answer cards from the
+transcript (structured output, each card pinned to a second of the lecture). Without
+an API key there are no cards: cards cut from the transcript itself were mostly small
+talk. Nothing is saved when the model fails, so the next open tries again. Reviews
+use SM-2 spaced repetition.
 
 Ask retrieves the closest passages (keyword plus meaning), numbers them, and sends
 them to Claude as quoted data with a schema that makes every sentence cite a passage.

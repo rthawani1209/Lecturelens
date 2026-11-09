@@ -78,7 +78,7 @@ pgvector, the demo course processed with `scripts/seed_demo.py`).
 | Claim | Proof | Reproduce | Number | Status |
 |---|---|---|---|---|
 | Flashcards per lecture with SM-2 spaced repetition | `backend/lecturelens/study/srs.py`, `backend/tests/test_srs.py`, `test_review_schedules_the_card` | `cd backend && pytest tests/test_srs.py tests/test_study.py` | | done |
-| Cards written by Claude when a key is set; without one, fill-in-the-blank cards from terms that were both said and shown on a slide | `backend/lecturelens/study/cards.py`, `test_claude_cards` (fake model), `test_cloze_cards_without_an_api_key` | `cd backend && pytest tests/test_study.py` | | done (the Claude path is tested with a fake model; CI has no API key) |
+| Cards written by Claude; without a key or when the model fails, no deck is saved and the page says why | `backend/lecturelens/study/cards.py`, `test_claude_cards`, `test_no_cards_without_a_model`, `test_a_failed_or_empty_reply_saves_nothing` (fake model) | `cd backend && pytest tests/test_study.py` | | done (tested with a fake model; CI has no API key) |
 | Ask a lecture a question; every sentence of the answer cites a timestamp, and it says "not covered" instead of guessing | `backend/lecturelens/study/{retrieve,ask}.py`, `test_extractive_answer_quotes_the_lecture`, `test_all_uncited_means_not_covered` | `cd backend && pytest tests/test_study.py` | | done |
 
 ## Frontend and end-to-end tests

@@ -1,6 +1,5 @@
 """Study: flashcard decks per lecture with spaced repetition, and Ask."""
 
-import math
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -50,7 +49,7 @@ class DeckOut(BaseModel):
     course_id: UUID
     lecture_title: str
     course_code: str
-    mode: str  # claude | cloze
+    mode: str  # always "claude"; old decks said "cloze"
     total: int
     due: int
     cards: list[CardOut]  # due ones first, then the rest by due date
@@ -118,25 +117,6 @@ def course_decks(course_id: UUID, user: dict = Depends(require_user)) -> list[di
     return [{"week": w, "lectures": lecs} for w, lecs in weeks.items()]
 
 
-def _rarity(conn, course_id: UUID, words: list[str]) -> tuple[dict[str, float], int]:
-    """idf of each word across the course's lectures, and how many lectures there are."""
-    if not words:
-        return {}, 0
-    rows = conn.execute(
-        """
-        SELECT w, count(DISTINCT s.lecture_id) AS df,
-               (SELECT count(*) FROM lectures WHERE course_id = %(c)s) AS n
-          FROM unnest(%(w)s::text[]) w
-          LEFT JOIN segments s ON s.tsv @@ plainto_tsquery('english', w)
-               AND s.lecture_id IN (SELECT id FROM lectures WHERE course_id = %(c)s)
-         GROUP BY w
-        """,
-        {"c": course_id, "w": words},
-    ).fetchall()
-    n = rows[0]["n"] if rows else 0
-    return {r["w"]: math.log((r["n"] + 1) / (r["df"] + 1)) + 1 for r in rows}, n
-
-
 def _deck(conn, user: dict, lec: dict) -> dict:
     deck = conn.execute(
         "SELECT * FROM decks WHERE user_id = %s AND lecture_id = %s", (user["id"], lec["id"])
@@ -151,27 +131,18 @@ def _deck(conn, user: dict, lec: dict) -> dict:
     if not lines:
         raise HTTPException(409, "This lecture has no transcript yet.")
     llm = ai.get_llm()
-    made, mode, tokens = [], "cloze", 0
-    if llm is not None:
-        ai.guard(conn, user["id"])
-        try:
-            made, tokens = making.with_claude(llm, lec["title"], lines, lec["duration_s"])
-            mode = "claude"
-        except ai.AIUnavailable:
-            made = []
-        ai.record(conn, user["id"], "cards", tokens)
+    if llm is None:
+        # cards cut from the transcript without a model were mostly small talk
+        raise HTTPException(503, "Study cards need the AI model, and it isn't switched on here.")
+    ai.guard(conn, user["id"])
+    try:
+        made, tokens = making.write(llm, lec["title"], lines, lec["duration_s"])
+    except ai.AIUnavailable:
+        made, tokens = [], 0
+    ai.record(conn, user["id"], "cards", tokens)
     if not made:
-        slides = [
-            r["ocr_text"]
-            for r in conn.execute(
-                "SELECT ocr_text FROM frames WHERE lecture_id = %s AND ocr_text <> ''",
-                (lec["id"],),
-            ).fetchall()
-        ]
-        scores = making.candidates([ln["text"] for ln in lines], slides)
-        rarity, n = _rarity(conn, lec["course_id"], list(scores))
-        terms = making.key_terms(scores, rarity, n)
-        made, mode = making.cloze(lines, terms), "cloze"
+        conn.commit()  # keep the usage record; nothing is saved, so opening again retries
+        raise HTTPException(503, "Couldn't write cards for this lecture just now. Try again.")
 
     with conn.transaction():
         deck = conn.execute(
@@ -180,7 +151,7 @@ def _deck(conn, user: dict, lec: dict) -> dict:
             VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (user_id, lecture_id) DO NOTHING RETURNING *
             """,
-            (user["id"], lec["course_id"], lec["id"], lec["title"], mode),
+            (user["id"], lec["course_id"], lec["id"], lec["title"], "claude"),
         ).fetchone()
         if deck is None:  # a second request got there first
             return conn.execute(

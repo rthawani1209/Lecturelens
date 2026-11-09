@@ -45,8 +45,8 @@ so it's the default, and a CI gate keeps it that way. The write-up is in
    re-ranker trained with a pairwise ranking loss. TF Serving serves both.
 4. **Search.** Keyword (Postgres full-text), meaning, slide text and image search,
    merged with reciprocal rank fusion. Meaning search is the default.
-5. **Study.** Claude writes cards and cited answers when an API key is set. Without one,
-   it falls back to fill-in-the-blank cards and quoted passages, with per-user AI limits.
+5. **Study.** Claude writes cards and cited answers when an API key is set, with per-user
+   AI limits. Without one, Ask quotes the lecture and flashcards are off.
 
 More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -59,7 +59,7 @@ backend/            Python API (FastAPI) and pipeline workers
     db/             connection pool + migration runner
     pipeline/       processing stages: fetch, probe, audio, transcribe, frames, OCR, embed, tag
     search/         hybrid search engine, NumPy fusion (RRF), metrics, re-ranker
-    study/          flashcards (Claude or cloze), spaced repetition, cited answers
+    study/          flashcards (Claude), spaced repetition, cited answers
     access.py       who can read or change each course and lecture
     ai.py           Claude client and per-user limits
     auth.py         email-link and Google sign-in, sessions

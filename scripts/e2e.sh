@@ -55,7 +55,8 @@ redis-cli -u "$REDIS_URL" flushdb >/dev/null 2>&1 || true
 (cd backend && python -m lecturelens.db.migrate)
 (cd backend && python ../scripts/e2e_seed.py "$E2E_SEED")
 
-(cd backend && exec setsid uvicorn lecturelens.api.main:app --port "$api_port" >"$E2E_API_LOG" 2>&1) &
+# a stand-in model writes the flashcards (scripts/e2e_app.py)
+(cd backend && exec setsid uvicorn --app-dir ../scripts e2e_app:app --port "$api_port" >"$E2E_API_LOG" 2>&1) &
 pids+=($!)
 (cd backend && exec setsid celery -A lecturelens.worker worker -l warning -P solo >"$run/worker.log" 2>&1) &
 pids+=($!)

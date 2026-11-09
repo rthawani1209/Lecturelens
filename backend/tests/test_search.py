@@ -126,3 +126,28 @@ def test_collapse_merges_overlapping_windows():
     c = Candidate(3, "L", 600, 630)
     out = collapse([(a, 0.9), (b, 0.8), (c, 0.7)], limit=10)
     assert [x.segment_id for x, _ in out] == [1, 3]
+
+
+@pytest.mark.db
+def test_a_scrap_of_a_sentence_comes_with_its_neighbours(indexed, db):
+    from lecturelens.db import connection
+    from lecturelens.search.engine import _with_neighbours
+
+    lid, _, _ = indexed
+    db.execute("DELETE FROM transcript_lines WHERE lecture_id = %s", (lid,))
+    for t, text in [
+        (10, "So the for loop"),
+        (12, "goes through"),
+        (13, "to the loop."),
+        (15, "Next."),
+    ]:
+        db.execute(
+            "INSERT INTO transcript_lines (lecture_id, start_s, end_s, text)"
+            " VALUES (%s, %s, %s, %s)",
+            (lid, t, t + 1, text),
+        )
+    with connection() as conn:
+        got = _with_neighbours(conn, lid, {"start_s": 12, "text": "goes through"})
+        assert got == {"start_s": 10, "text": "So the for loop goes through to the loop."}
+        first = _with_neighbours(conn, lid, {"start_s": 10, "text": "So the for loop"})
+        assert first == {"start_s": 10, "text": "So the for loop goes through"}

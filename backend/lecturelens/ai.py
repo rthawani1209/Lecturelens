@@ -33,7 +33,7 @@ class Claude:
 
     def json(self, system: str, user: str, schema: dict, max_tokens: int) -> tuple[dict, int]:
         try:
-            res = self.client.beta.messages.create(
+            res = self.client.messages.create(
                 model=self.model,
                 max_tokens=max_tokens,
                 system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
@@ -42,9 +42,6 @@ class Claude:
                     "effort": "low",
                     "format": {"type": "json_schema", "schema": schema},
                 },
-                # if a safety check declines, let the API retry on a fallback model
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
             )
         except anthropic.APIError as e:
             raise AIUnavailable(str(e)) from e

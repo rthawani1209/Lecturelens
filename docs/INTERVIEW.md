@@ -60,10 +60,12 @@ answer is "not covered in this lecture" with a link to search the whole course. 
 inside a transcript that looks like an instruction stays data; there's a test that
 plants one and checks it's ignored.
 
-Without an API key (CI, or someone running it locally) it still works: Ask quotes the
-two best on-topic sentences, and flashcards become fill-in-the-blank cards. Those pick
-terms that are rare across the course and were both said and shown on a slide, which
-filters out filler words. Reviews use SM-2, the classic spaced repetition schedule.
+Without an API key, Ask still works: it quotes the two best on-topic sentences.
+Flashcards don't. I first made fill-in-the-blank cards from terms that were rare in the
+course and also on a slide, then tried turning "X is ..." sentences into "What is X?".
+On real MIT lectures both mostly picked up small talk ("How has your ___ been?"), so
+now the study page says the AI is off rather than show cards that teach nothing.
+Reviews use SM-2, the classic spaced repetition schedule.
 
 Every AI call is logged per user with its token count, and there are limits per
 minute, day and month, so one user can't run up the bill.

@@ -23,6 +23,8 @@ x-backend-env: &backend-env
   TRUST_FORWARDED_FOR: "true"
   MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-4294967296}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  AI_MODEL: ${AI_MODEL:-claude-haiku-5-5}
+  AI_MONTHLY_TOKENS: ${AI_MONTHLY_TOKENS:-20000000}
   SMTP_URL: ${SMTP_URL:-}
   # nobody reads the server log for sign-in links; without SMTP, hide email sign-in
   EMAIL_TO_LOG: "false"

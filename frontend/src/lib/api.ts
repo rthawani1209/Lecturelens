@@ -107,7 +107,7 @@ export type Deck = {
   course_id: string;
   lecture_title: string;
   course_code: string;
-  mode: "claude" | "cloze";
+  mode: "claude";
   total: number;
   due: number;
   cards: Card[];

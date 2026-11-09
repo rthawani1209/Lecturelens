@@ -290,9 +290,7 @@ export function StudyView() {
               <div className={styles.card}>
                 <span className={`${styles.ret} ${styles.retTl}`} aria-hidden="true" />
                 <span className={`${styles.ret} ${styles.retBr}`} aria-hidden="true" />
-                <p className={`label ${styles.qLabel}`}>
-                  {deck.mode === "cloze" ? "Fill in the blank" : "Question"}
-                </p>
+                <p className={`label ${styles.qLabel}`}>Question</p>
                 <h1 className={`display ${card.front.length > 140 ? styles.long : ""}`}>
                   {card.front}
                 </h1>
@@ -386,7 +384,6 @@ export function StudyView() {
 }
 
 function nextDue(deck: Deck, reviewed: number): string {
-  if (!deck.total) return "This lecture didn't give us enough to make cards from.";
   if (reviewed) return "Come back tomorrow; cards you knew well will wait longer.";
   const soonest = deck.cards
     .map((c) => new Date(c.due_at).getTime())

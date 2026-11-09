@@ -113,7 +113,10 @@ export function WatchView({ id }: { id: string }) {
           <h1 className="display">{title}</h1>
         </div>
         <div className={styles.actions}>
-          <Link href={`/study?lecture=${data.id}`} className={styles.primary}>
+          <Link
+            href={`/study?lecture=${data.id}&course=${data.course.id}`}
+            className={styles.primary}
+          >
             Study this lecture
           </Link>
           <button

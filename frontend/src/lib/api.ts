@@ -169,9 +169,13 @@ export const api = {
     return get<SearchResult>(`/search?${p}`, { signal: opts.signal });
   },
   providers: () =>
-    get<{ email: boolean; google: boolean; demo?: boolean; max_upload_bytes?: number }>(
-      "/auth/providers",
-    ),
+    get<{
+      email: boolean;
+      google: boolean;
+      demo?: boolean;
+      max_upload_bytes?: number;
+      cards?: boolean;
+    }>("/auth/providers"),
   me: () => get<{ user: Me | null }>("/auth/session", { cache: "no-store" }).then((s) => s.user),
   emailLink: (email: string) => send<void>("POST", "/auth/email", { email }),
   verify: (token: string) => send<Me>("POST", "/auth/email/verify", { token }),

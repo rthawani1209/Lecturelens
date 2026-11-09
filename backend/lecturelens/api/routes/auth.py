@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 
+from ... import ai
 from ...auth import (
     create_session,
     end_session,
@@ -96,6 +97,7 @@ def providers() -> dict:
         "google": bool(s.google_client_id),
         "demo": s.demo_login,
         "max_upload_bytes": s.max_upload_bytes,  # so the upload page states the real limit
+        "cards": ai.get_llm() is not None,  # flashcards need a model; Ask works without one
     }
 
 

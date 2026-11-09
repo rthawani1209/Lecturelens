@@ -143,6 +143,7 @@ def test_providers_only_offer_google_when_configured(client):
         "google": False,
         "demo": False,
         "max_upload_bytes": 4 * 1024**3,
+        "cards": False,
     }
     assert client.get("/auth/google/start", follow_redirects=False).status_code == 404
 

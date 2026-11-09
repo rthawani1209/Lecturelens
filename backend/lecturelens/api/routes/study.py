@@ -135,6 +135,13 @@ def _deck(conn, user: dict, lec: dict) -> dict:
         # cards cut from the transcript without a model were mostly small talk
         raise HTTPException(503, "Study cards need the AI model, and it isn't switched on here.")
     ai.guard(conn, user["id"])
+    # guard() queues this user's calls; if a second open waited there, the first
+    # one has written the deck by now, so don't pay the model twice
+    deck = conn.execute(
+        "SELECT * FROM decks WHERE user_id = %s AND lecture_id = %s", (user["id"], lec["id"])
+    ).fetchone()
+    if deck is not None:
+        return deck
     try:
         made, tokens = making.write(llm, lec["title"], lines, lec["duration_s"])
     except ai.AIUnavailable:

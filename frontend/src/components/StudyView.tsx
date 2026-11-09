@@ -44,6 +44,8 @@ export function StudyView() {
   const [shown, setShown] = useState(false);
   const [loadingDeck, setLoadingDeck] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // null until we know; false when the server has no AI model to write cards
+  const [cardsOn, setCardsOn] = useState<boolean | null>(null);
 
   // a link to one lecture ("Study this lecture") opens that lecture's course
   const courseId = courseParam ?? deck?.course_id ?? (lectureParam ? null : courses[0]?.id) ?? null;
@@ -67,6 +69,10 @@ export function StudyView() {
 
   useEffect(() => {
     api.me().then(setMe, () => setMe(null));
+    api.providers().then(
+      (p) => setCardsOn(p.cards !== false),
+      () => setCardsOn(true), // let opening a deck report the real problem
+    );
   }, []);
 
   useEffect(() => {
@@ -88,7 +94,7 @@ export function StudyView() {
   }, [refreshWeeks]);
 
   useEffect(() => {
-    if (!lectureParam || !me) {
+    if (!lectureParam || !me || cardsOn !== true) {
       setDeck(null);
       return;
     }
@@ -122,7 +128,7 @@ export function StudyView() {
     return () => {
       live = false;
     };
-  }, [lectureParam, me, refreshWeeks]);
+  }, [lectureParam, me, cardsOn, refreshWeeks]);
 
   const card = queue[0];
 
@@ -233,7 +239,7 @@ export function StudyView() {
                 type="button"
                 className={`${styles.deck} ${l.id === lectureParam ? styles.on : ""}`}
                 aria-current={l.id === lectureParam ? "true" : undefined}
-                onClick={() => go({ lecture: l.id })}
+                onClick={() => go({ course: courseId ?? undefined, lecture: l.id })}
               >
                 <span>{shortTitle(l.title, l.position)}</span>
                 <span className={`mono ${l.due ? styles.dueCount : ""}`}>
@@ -255,7 +261,7 @@ export function StudyView() {
           </p>
         )}
 
-        {!lectureParam && (
+        {!lectureParam && cardsOn !== false && (
           <div className={styles.empty}>
             <p className="label">Pick a lecture</p>
             <h1 className="display">Choose a deck on the left</h1>
@@ -263,6 +269,20 @@ export function StudyView() {
               The first time you open a lecture we write its cards. After that, cards come back on a
               spaced schedule: the better you know one, the longer until you see it again.
             </p>
+          </div>
+        )}
+
+        {cardsOn === false && (
+          <div className={styles.empty}>
+            <p className="label">Flashcards are off</p>
+            <h1 className="display">Study cards aren&apos;t switched on for this site</h1>
+            <p>
+              An AI model writes the cards, and this server doesn&apos;t have one connected yet. You
+              can still ask about a lecture: answers quote it with timestamps.
+            </p>
+            {lectureParam && courseId && (
+              <AskBox key={lectureParam} lectureId={lectureParam} courseId={courseId} />
+            )}
           </div>
         )}
 

@@ -283,3 +283,36 @@ def test_study_waits_for_a_finished_lecture(client, course, db):
     db.execute("UPDATE lectures SET status = 'failed' WHERE id = %s", (lid,))
     r = client.post(f"/lectures/{lid}/deck")
     assert r.status_code == 409 and "didn't finish" in r.json()["detail"]
+
+
+def test_two_opens_at_once_call_the_model_once(client, course, db, llm):
+    import threading
+    import time
+
+    _, lid = course
+    fake = llm(CARDS)
+    slow = fake.json
+
+    def json(*a, **k):
+        time.sleep(0.5)  # long enough for the other request to reach the lock
+        return slow(*a, **k)
+
+    fake.json = json
+    got = []
+    threads = [
+        threading.Thread(target=lambda: got.append(client.post(f"/lectures/{lid}/deck").json()))
+        for _ in range(2)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(fake.calls) == 1
+    assert got[0]["cards"] == got[1]["cards"] and len(got[0]["cards"]) == 2
+    assert db.execute("SELECT count(*) FROM ai_calls").fetchone()[0] == 1
+
+
+def test_the_study_page_knows_when_cards_are_off(client, llm):
+    assert client.get("/auth/providers").json()["cards"] is False
+    llm(CARDS)
+    assert client.get("/auth/providers").json()["cards"] is True

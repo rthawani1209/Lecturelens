@@ -20,7 +20,7 @@ jobs:
           - {release: ocw-18.06, video: lec01.mp4, start: 60, phrase: "solve a system of linear equations"}
           - {release: ocw-6.006-s20, video: lec03.mp4, start: 90, phrase: "a data structure that implements an interface"}
           - {release: ocw-6.100l, video: lec02.mp4, start: 90, phrase: "binding the name radius to a value"}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
           PHRASE: ${{ matrix.phrase }}
 
   edges:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4

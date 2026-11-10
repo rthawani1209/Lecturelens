@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         # the ARM run is the free Oracle Cloud setup, without TF Serving
-        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
